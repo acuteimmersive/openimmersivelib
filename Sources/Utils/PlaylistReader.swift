@@ -35,6 +35,9 @@ public actor PlaylistReader {
     /// Resolution options parsed from the playlist resource at `url`.
     @MainActor
     private(set) public var resolutions: [ResolutionOption] = []
+    /// AudioOptions parsed from the playest resource at `url`
+    @MainActor
+    private(set) public var audios: [AudioOption] = []
     /// Error that caused `state` to be set to `.error`. Will be `nil` if `state` is not `.error`.
     @MainActor
     public var error: Error? {
@@ -84,6 +87,13 @@ public actor PlaylistReader {
         self.resolutions = resolutions
     }
     
+    /// Thread safe setter for the audio of the Playlist Reader
+    @MainActor
+    private func setAudios(_ audios: [AudioOption]) {
+        self.audios = audios
+    }
+    
+    
     /// Parses raw data to populate the Playlist Reader's properties.
     /// - Parameters:
     ///   - data: raw data to be parsed, likely the response of a web request,
@@ -96,6 +106,8 @@ public actor PlaylistReader {
         }
         
         let resolutions = parseResolutions(from: text)
+        let audios = parseAudioOptions(from: text)
+        
         
         if resolutions.isEmpty {
             throw PlaylistReaderError.NoAvailableResolutionError
@@ -103,6 +115,7 @@ public actor PlaylistReader {
         
         Task {
             await setResolutions(resolutions)
+            await setAudios(audios)
         }
     }
     
@@ -145,4 +158,48 @@ public actor PlaylistReader {
         
         return resolutions.sorted { $0.size.width > $1.size.width }
     }
+    
+    /// Parses a list of Audio Options from
+    /// - Parameter text: text to be parsed, expected to be the contents of an HLS m3u8 playlist file.
+    /// - Returns: a list of Audio Options.
+    private func parseAudioOptions(from text: String) -> [AudioOption] {
+        var audioOptions: [AudioOption] = []
+        // Regex for lines that define an audio option.
+        let audioSearch = /#EXT-X-MEDIA:TYPE=AUDIO,(?<attributes>.+)/
+        // Regex for extracting the LANGUAGE value.
+        let languageSearch = /LANGUAGE="(?<language>[^"]+)"/
+        // Regex for extracting the URI.
+        let uriSearch = /URI="(?<url>[^"]+)"/
+
+        let lines = text.components(separatedBy: .newlines)
+        for line in lines {
+            // Only consider lines for audio options.
+            guard ((try? audioSearch.firstMatch(in: line) != nil) != nil) else { continue }
+            
+            // Extract language.
+            guard let languageMatch = try? languageSearch.firstMatch(in: line),
+                  let language = languageMatch.language else {
+                continue
+            }
+            
+            // Extract URI.
+            guard let uriMatch = try? uriSearch.firstMatch(in: line),
+                  let uriString = uriMatch.url else {
+                continue
+            }
+            let url: URL
+            if let absoluteUrl = URL(string: uriString), absoluteUrl.host != nil {
+                url = absoluteUrl
+            } else {
+                // For relative paths, use the same base URL as your current context.
+                url = URL(filePath: uriString, relativeTo: self.url)
+            }
+            
+            let option = AudioOption( url: url, language: language)
+            audioOptions.append(option)
+        }
+        
+        return audioOptions
+    }
+
 }
