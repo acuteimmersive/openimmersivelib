@@ -224,73 +224,67 @@ public class VideoPlayer: Sendable {
     /// from the first available audio option.
     /// - Parameter url: The URL to the video stream variant.
     private func openStreamVariant(_ url: URL) async {
-        guard let currentAsset = player.currentItem?.asset as? AVURLAsset else {
+        guard let asset = player.currentItem?.asset as? AVURLAsset else {
             // nothing is currently playing
             return
         }
         
-        guard currentAsset.url != url else {
+        guard asset.url != url else {
             // already playing the correct url
             return
         }
         
-        withAnimation {
-            shouldShowResolutionOptions = false
-        }
+        withAnimation { shouldShowResolutionOptions = false }
         
-        // Temporarily stop observers to prevent interference.
+        // temporarily stop the observers to stop them from interfering in the state changes
         tearDownObservers()
         
-        let playerItem: AVPlayerItem
-        
-        if let audioOption = self.audioOptions.first {
+        // If we do not have separate audio, continue with the old route
+        if(audioOptions.isEmpty && audioOptions.first == nil){
+            print("going the original route")
+            let playerItem = AVPlayerItem(url: url)
+            player.replaceCurrentItem(with: playerItem)
+        }else{
             let videoAsset = AVURLAsset(url: url)
-            let audioAsset = AVURLAsset(url: audioOption.url)
-            let mixComposition = AVMutableComposition()
-            
+            print("Accessing audio options")
+            let audioAsset = AVURLAsset(url: audioOptions.first!.url)
+            print("got an audio asset")
+            let composition = AVMutableComposition()
+
             do {
-                // Asynchronously load video tracks.
+                print("loading video track")
+                // Load video tracks asynchronously
                 let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
-                if let videoTrack = videoTracks.first,
-                   let compositionVideoTrack = mixComposition.addMutableTrack(
-                        withMediaType: .video,
-                        preferredTrackID: kCMPersistentTrackID_Invalid
-                   ) {
-                    let timeRange = CMTimeRange(start: .zero, duration: try await videoAsset.load(.duration))
-                    try compositionVideoTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
+                if let videoTrack = videoTracks.first {
+                  let videoCompositionTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+                  try videoCompositionTrack?.insertTimeRange(CMTimeRange(start: .zero, duration: videoAsset.duration), of: videoTrack, at: .zero)
                 }
-                
-                // Asynchronously load audio tracks.
+                print("loading audio track")
+                // Load audio tracks asynchronously
                 let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
-                if let audioTrack = audioTracks.first,
-                   let compositionAudioTrack = mixComposition.addMutableTrack(
-                        withMediaType: .audio,
-                        preferredTrackID: kCMPersistentTrackID_Invalid
-                   ) {
-                    let timeRange = CMTimeRange(start: .zero, duration: try await videoAsset.load(.duration))
-                    try compositionAudioTrack.insertTimeRange(timeRange, of: audioTrack, at: .zero)
+                if let audioTrack = audioTracks.first {
+                  let audioCompositionTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+                  try audioCompositionTrack?.insertTimeRange(CMTimeRange(start: .zero, duration: audioAsset.duration), of: audioTrack, at: .zero)
                 }
-                
-                playerItem = AVPlayerItem(asset: mixComposition)
+
+                // Create and return the player item
+                let playerItem = AVPlayerItem(asset: composition)
+                await MainActor.run {
+                   player.replaceCurrentItem(with: playerItem)
+                   player.play()
+               }
             } catch {
-                print("Error loading tracks: \(error)")
-                // Fallback to the video URL if track composition fails.
-                playerItem = AVPlayerItem(url: url)
+                print("Error loading tracks: \(error.localizedDescription)")
             }
-        } else {
-            // No separate audio option—just load the video URL.
-            playerItem = AVPlayerItem(url: url)
+//            Accessing audio options
+//            got an audio asset
+//            loading video track
+//            loading audio track
         }
-        
-        player.replaceCurrentItem(with: playerItem)
-        // "Simulate" a scrub end to reposition playback.
         scrubState = .scrubEnded
         setupObservers()
-        if !paused {
-            play()
-        }
+        if !paused { play() }
     }
-
     
     /// Load the resolution option for the given index, and open the corresponding url if successful.
     /// - Parameters:
@@ -378,55 +372,57 @@ public class VideoPlayer: Sendable {
     // Tricky: the observer callback closures must capture a weak self for safety, and execute on the MainActor
     /// Set up observers to register current media duration, current playback time, current bitrate, playback end event.
     private func setupObservers() {
+        // Time Observer (same as before)
         if timeObserver == nil {
             let interval = CMTime(seconds: 0.1, preferredTimescale: 1000)
-            timeObserver = player.addPeriodicTimeObserver(
-                forInterval: interval,
-                queue: .main
-            ) { [weak self] time in
+            timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
                 Task { @MainActor in
-                    if let self {
-                        if let event = self.player.currentItem?.accessLog()?.events.last {
-                            self.bitrate = event.indicatedBitrate
-                        } else {
-                            self.bitrate = 0
-                        }
-                        
-                        switch self.scrubState {
-                        case .notScrubbing:
-                            self.currentTime = time.seconds
-                            break
-                        case .scrubStarted: return
-                        case .scrubEnded: return
-                        }
+                    guard let self = self else { return }
+                    if let event = self.player.currentItem?.accessLog()?.events.last {
+                        self.bitrate = event.indicatedBitrate
+                    } else {
+                        self.bitrate = 0
+                    }
+                    
+                    switch self.scrubState {
+                    case .notScrubbing:
+                        self.currentTime = time.seconds
+                    case .scrubStarted, .scrubEnded:
+                        return
                     }
                 }
             }
         }
         
-        if durationObserver == nil, let currentItem = player.currentItem {
-            durationObserver = currentItem.observe(
-                \.duration,
-                 options: [.new, .initial]
-            ) { [weak self] item, _ in
-                let duration = CMTimeGetSeconds(item.duration)
-                if !duration.isNaN {
-                    Task { @MainActor in
-                        self?.duration = duration
+        // Instead of KVO on the player item’s duration, load the asset’s duration directly.
+        if let currentItem = player.currentItem {
+            let asset = currentItem.asset
+            asset.loadValuesAsynchronously(forKeys: ["duration"]) { [weak self] in
+                guard let self = self else { return }
+                var error: NSError? = nil
+                let status = asset.statusOfValue(forKey: "duration", error: &error)
+                if status == .loaded {
+                    let assetDuration = CMTimeGetSeconds(asset.duration)
+                    if !assetDuration.isNaN {
+                        Task { @MainActor in
+                            self.duration = assetDuration
+                        }
                     }
+                } else {
+                    // Optionally, handle errors here.
+                    print("Error loading duration: \(String(describing: error))")
                 }
             }
         }
         
+        // Buffering observer remains unchanged.
         if bufferingObserver == nil {
             bufferingObserver = player.observe(
                 \.timeControlStatus,
-                 options: [.new, .old, .initial]
+                options: [.new, .old, .initial]
             ) { [weak self] player, status in
                 Task { @MainActor in
                     self?.buffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
-                    // buffering doesn't bring up the control panel but prevents auto dismiss.
-                    // auto dismiss after play resumed.
                     if (status.oldValue, status.newValue) == (.waitingToPlayAtSpecifiedRate, .playing) {
                         self?.restartControlPanelTask()
                     }
@@ -434,6 +430,7 @@ public class VideoPlayer: Sendable {
             }
         }
         
+        // Observe playback end.
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(onPlayReachedEnd),
@@ -441,6 +438,7 @@ public class VideoPlayer: Sendable {
             object: player.currentItem
         )
     }
+
     
     /// Tear down observers set up in `setupObservers()`.
     private func tearDownObservers() {

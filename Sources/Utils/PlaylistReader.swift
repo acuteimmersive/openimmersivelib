@@ -162,7 +162,6 @@ public actor PlaylistReader {
     /// Parses a list of Audio Options from
     /// - Parameter text: text to be parsed, expected to be the contents of an HLS m3u8 playlist file.
     /// - Returns: a list of Audio Options.
-
     private func parseAudioOptions(from text: String) -> [AudioOption] {
         var audioOptions: [AudioOption] = []
         let audioSearch = /#EXT-X-MEDIA:TYPE=AUDIO,(?<attributes>.+)/
@@ -171,16 +170,14 @@ public actor PlaylistReader {
 
         let lines = text.components(separatedBy: .newlines)
         for line in lines {
-            // Only consider lines for audio options.
             guard let _ = try? audioSearch.firstMatch(in: line) else { continue }
             
-            // Extract language.
+            // Fixed capture group access
             guard let languageMatch = try? languageSearch.firstMatch(in: line) else { continue }
-            let language = String(languageMatch.language)
+            let language = String(languageMatch.output.language) // Add .output
             
-            // Extract URI.
             guard let uriMatch = try? uriSearch.firstMatch(in: line) else { continue }
-            let uriString = String(uriMatch.url)
+            let uriString = String(uriMatch.output.url) // Add .output
             
             let url: URL
             if let absoluteUrl = URL(string: uriString), absoluteUrl.host != nil {
@@ -192,7 +189,8 @@ public actor PlaylistReader {
             let option = AudioOption(url: url, language: language)
             audioOptions.append(option)
         }
-        
+        print("Found audio options")
+        print(audioOptions)
         return audioOptions
     }
 
