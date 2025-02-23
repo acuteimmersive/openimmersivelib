@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import AVFoundation
+@preconcurrency import AVFoundation
 import RealityFoundation
 
 /// Video Player Controller interfacing the underlying `AVPlayer`, exposing states and controls to the UI.

@@ -162,40 +162,34 @@ public actor PlaylistReader {
     /// Parses a list of Audio Options from
     /// - Parameter text: text to be parsed, expected to be the contents of an HLS m3u8 playlist file.
     /// - Returns: a list of Audio Options.
+
     private func parseAudioOptions(from text: String) -> [AudioOption] {
         var audioOptions: [AudioOption] = []
-        // Regex for lines that define an audio option.
         let audioSearch = /#EXT-X-MEDIA:TYPE=AUDIO,(?<attributes>.+)/
-        // Regex for extracting the LANGUAGE value.
         let languageSearch = /LANGUAGE="(?<language>[^"]+)"/
-        // Regex for extracting the URI.
         let uriSearch = /URI="(?<url>[^"]+)"/
 
         let lines = text.components(separatedBy: .newlines)
         for line in lines {
             // Only consider lines for audio options.
-            guard ((try? audioSearch.firstMatch(in: line) != nil) != nil) else { continue }
+            guard let _ = try? audioSearch.firstMatch(in: line) else { continue }
             
             // Extract language.
-            guard let languageMatch = try? languageSearch.firstMatch(in: line),
-                  let language = languageMatch.language else {
-                continue
-            }
+            guard let languageMatch = try? languageSearch.firstMatch(in: line) else { continue }
+            let language = String(languageMatch.language)
             
             // Extract URI.
-            guard let uriMatch = try? uriSearch.firstMatch(in: line),
-                  let uriString = uriMatch.url else {
-                continue
-            }
+            guard let uriMatch = try? uriSearch.firstMatch(in: line) else { continue }
+            let uriString = String(uriMatch.url)
+            
             let url: URL
             if let absoluteUrl = URL(string: uriString), absoluteUrl.host != nil {
                 url = absoluteUrl
             } else {
-                // For relative paths, use the same base URL as your current context.
                 url = URL(filePath: uriString, relativeTo: self.url)
             }
             
-            let option = AudioOption( url: url, language: language)
+            let option = AudioOption(url: url, language: language)
             audioOptions.append(option)
         }
         
