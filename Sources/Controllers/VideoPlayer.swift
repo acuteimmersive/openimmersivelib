@@ -42,6 +42,8 @@ public class VideoPlayer: Sendable {
     private(set) var bitrate: Double = 0
     /// Resolution options available for the video stream, only available if streaming from a HLS server (m3u8).
     private(set) var resolutionOptions: [ResolutionOption] = []
+    /// Audio options available for the video stream, only available if streaming from a HLS server (m3u8) and with separate audio playlists.
+    private(set) var audioOptions: [AudioOption] = []
     /// `true` if the control panel should be visible to the user.
     private(set) var shouldShowControlPanel: Bool = true {
         didSet {
@@ -208,6 +210,7 @@ public class VideoPlayer: Sendable {
                     if case .success = reader.state,
                        reader.resolutions.count > 0 {
                         self.resolutionOptions = reader.resolutions
+                        self.audioOptions = reader.audios
                         let defaultResolution = reader.resolutions.first!.size
                         self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
                     }
@@ -216,16 +219,17 @@ public class VideoPlayer: Sendable {
         }
     }
     
-    /// Load the corresponding stream variant from a resolution option, preserving other states.
-    /// - Parameters:
-    ///   - url: the url to the stream variant.
-    private func openStreamVariant(_ url: URL) {
-        guard let asset = player.currentItem?.asset as? AVURLAsset else {
+    /// Loads the given stream variant URL. If a separate audio option is available,
+    /// it creates a composition combining the video stream with the audio stream
+    /// from the first available audio option.
+    /// - Parameter url: The URL to the video stream variant.
+    private func openStreamVariant(_ url: URL) async {
+        guard let currentAsset = player.currentItem?.asset as? AVURLAsset else {
             // nothing is currently playing
             return
         }
         
-        guard asset.url != url else {
+        guard currentAsset.url != url else {
             // already playing the correct url
             return
         }
@@ -234,17 +238,59 @@ public class VideoPlayer: Sendable {
             shouldShowResolutionOptions = false
         }
         
-        // temporarily stop the observers to stop them from interfering in the state changes
+        // Temporarily stop observers to prevent interference.
         tearDownObservers()
-        let playerItem = AVPlayerItem(url: url)
+        
+        let playerItem: AVPlayerItem
+        
+        if let audioOption = self.audioOptions.first {
+            let videoAsset = AVURLAsset(url: url)
+            let audioAsset = AVURLAsset(url: audioOption.url)
+            let mixComposition = AVMutableComposition()
+            
+            do {
+                // Asynchronously load video tracks.
+                let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
+                if let videoTrack = videoTracks.first,
+                   let compositionVideoTrack = mixComposition.addMutableTrack(
+                        withMediaType: .video,
+                        preferredTrackID: kCMPersistentTrackID_Invalid
+                   ) {
+                    let timeRange = CMTimeRange(start: .zero, duration: try await videoAsset.load(.duration))
+                    try compositionVideoTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
+                }
+                
+                // Asynchronously load audio tracks.
+                let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
+                if let audioTrack = audioTracks.first,
+                   let compositionAudioTrack = mixComposition.addMutableTrack(
+                        withMediaType: .audio,
+                        preferredTrackID: kCMPersistentTrackID_Invalid
+                   ) {
+                    let timeRange = CMTimeRange(start: .zero, duration: try await videoAsset.load(.duration))
+                    try compositionAudioTrack.insertTimeRange(timeRange, of: audioTrack, at: .zero)
+                }
+                
+                playerItem = AVPlayerItem(asset: mixComposition)
+            } catch {
+                print("Error loading tracks: \(error)")
+                // Fallback to the video URL if track composition fails.
+                playerItem = AVPlayerItem(url: url)
+            }
+        } else {
+            // No separate audio option—just load the video URL.
+            playerItem = AVPlayerItem(url: url)
+        }
+        
         player.replaceCurrentItem(with: playerItem)
-        // "simulating" a scrub end will seek the current time to the right spot
+        // "Simulate" a scrub end to reposition playback.
         scrubState = .scrubEnded
         setupObservers()
         if !paused {
             play()
         }
     }
+
     
     /// Load the resolution option for the given index, and open the corresponding url if successful.
     /// - Parameters:
@@ -259,7 +305,10 @@ public class VideoPlayer: Sendable {
         // index -1 is automatic, that is to say the original URL parsed by the playlist reader
         let selectedUrl = index < 0 ? playlistReader.url : resolutionOptions[index].url
         
-        openStreamVariant(selectedUrl)
+        Task{
+            await openStreamVariant(selectedUrl)
+        }
+        
     }
     
     /// Play or unpause media playback.
