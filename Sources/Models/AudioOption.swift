@@ -12,15 +12,18 @@ public struct AudioOption: Codable {
     public let url: URL
     /// Language for the audio
     public let language: String
-    
+    /// The line declaring the audio option in the HLS playlist
+    public let declarationLine: String
     
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - url: URL to a m3u8 HLS media playlist file.
     ///   - language: Language of the audio
-    public init(url: URL, language: String) {
+    ///   - declarationLine: The line used to declare the audio option
+    public init(url: URL, language: String, declarationLine: String) {
         self.url = url
         self.language = language
+        self.declarationLine = declarationLine
     }
     
     /// A textual description of the Resolution Option.

@@ -16,15 +16,19 @@ public struct ResolutionOption: Codable {
     /// URL to a m3u8 HLS media playlist file.
     public let url: URL
     
+    /// The line used to declare the resolution option in the HLS playlist
+    public let declarationLine: String
+    
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - size: the pixel resolution of the video stream.
     ///   - bitrate: the peak bitrate of the video stream.
     ///   - url: URL to a m3u8 HLS media playlist file.
-    public init(size: CGSize, bitrate: Int, url: URL) {
+    public init(size: CGSize, bitrate: Int, url: URL, declarationLine: String) {
         self.size = size
         self.bitrate = bitrate
         self.url = url
+        self.declarationLine = declarationLine
     }
     
     /// A textual description of the Resolution Option.

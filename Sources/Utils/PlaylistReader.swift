@@ -136,6 +136,7 @@ public actor PlaylistReader {
                let height = Int(resolution.height),
                let bitrate = Int(bandwidth.bitrate),
                index + 1 < lines.count {
+                let declarationLine = line // Capture the full declaration line
                 let url = {
                     // testing for host() ensures that the URL is absolute
                     if let playlistUrl = URL(string: lines[index + 1]),
@@ -150,7 +151,8 @@ public actor PlaylistReader {
                 let option = ResolutionOption(
                     size: CGSize(width: width, height: height),
                     bitrate: bitrate,
-                    url: url
+                    url: url,
+                    declarationLine: declarationLine
                 )
                 resolutions.append(option)
             }
@@ -186,7 +188,7 @@ public actor PlaylistReader {
                 url = URL(filePath: uriString, relativeTo: self.url)
             }
             
-            let option = AudioOption(url: url, language: language)
+            let option = AudioOption(url: url, language: language, declarationLine: line)
             audioOptions.append(option)
         }
         print("Found audio options")

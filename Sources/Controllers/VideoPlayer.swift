@@ -103,10 +103,12 @@ public class VideoPlayer: Sendable {
     private var bufferingObserver: NSKeyValueObservation?
     private var dismissControlPanelTask: Task<Void, Never>?
     private var playlistReader: PlaylistReader?
-    
+    private var playlistWriter: PlaylistWriter = PlaylistWriter()
+
     //MARK: Immutable variables
     /// The video player
     public let player = AVPlayer()
+    public let audioPlayer = AVPlayer()
     public let videoMaterial: VideoMaterial
     
     //MARK: Public methods
@@ -211,6 +213,7 @@ public class VideoPlayer: Sendable {
                        reader.resolutions.count > 0 {
                         self.resolutionOptions = reader.resolutions
                         self.audioOptions = reader.audios
+                        print("set audio options")
                         let defaultResolution = reader.resolutions.first!.size
                         self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
                     }
@@ -239,48 +242,33 @@ public class VideoPlayer: Sendable {
         // temporarily stop the observers to stop them from interfering in the state changes
         tearDownObservers()
         
+        // Obtain the ResolutionOption index for the given url
+        let selectedOptionIndex = resolutionOptions.firstIndex(where: { $0.url == url }) ?? -1
+        
         // If we do not have separate audio, continue with the old route
-        if(audioOptions.isEmpty && audioOptions.first == nil){
+        if playlistReader!.audios.isEmpty || playlistReader!.audios.first == nil || selectedOptionIndex == -1 {
             print("going the original route")
             let playerItem = AVPlayerItem(url: url)
             player.replaceCurrentItem(with: playerItem)
-        }else{
-            let videoAsset = AVURLAsset(url: url)
-            print("Accessing audio options")
-            let audioAsset = AVURLAsset(url: audioOptions.first!.url)
-            print("got an audio asset")
-            let composition = AVMutableComposition()
-
-            do {
-                print("loading video track")
-                // Load video tracks asynchronously
-                let videoTracks = try await videoAsset.loadTracks(withMediaType: .video)
-                if let videoTrack = videoTracks.first {
-                  let videoCompositionTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
-                  try videoCompositionTrack?.insertTimeRange(CMTimeRange(start: .zero, duration: videoAsset.duration), of: videoTrack, at: .zero)
-                }
-                print("loading audio track")
-                // Load audio tracks asynchronously
-                let audioTracks = try await audioAsset.loadTracks(withMediaType: .audio)
-                if let audioTrack = audioTracks.first {
-                  let audioCompositionTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
-                  try audioCompositionTrack?.insertTimeRange(CMTimeRange(start: .zero, duration: audioAsset.duration), of: audioTrack, at: .zero)
-                }
-
-                // Create and return the player item
-                let playerItem = AVPlayerItem(asset: composition)
-                await MainActor.run {
-                   player.replaceCurrentItem(with: playerItem)
-                   player.play()
-               }
-            } catch {
-                print("Error loading tracks: \(error.localizedDescription)")
+        } else {
+            guard let firstAudioOption = playlistReader!.audios.first else {
+                print("No audio options available")
+                return
             }
-//            Accessing audio options
-//            got an audio asset
-//            loading video track
-//            loading audio track
+            
+            let selectedResolution = resolutionOptions[selectedOptionIndex]
+            do{
+                let audioPlayerItem = AVPlayerItem(url: firstAudioOption.url)
+                let videoPlayerItem = AVPlayerItem(url: url)
+                audioPlayer.replaceCurrentItem(with: audioPlayerItem)
+                player.replaceCurrentItem(with: videoPlayerItem)
+                syncAudioWithVideo()
+            }catch {
+                print("Error writing the temporary playlist")
+            }
+            
         }
+        
         scrubState = .scrubEnded
         setupObservers()
         if !paused { play() }
@@ -313,6 +301,10 @@ public class VideoPlayer: Sendable {
             player.seek(to: CMTime.zero)
         }
         player.play()
+        if let currentItem = audioPlayer.currentItem {
+            print("playing audio")
+            audioPlayer.play()
+        }
         paused = false
         hasReachedEnd = false
         restartControlPanelTask()
@@ -321,6 +313,9 @@ public class VideoPlayer: Sendable {
     /// Pause media playback.
     public func pause() {
         player.pause()
+        if let currentItem = audioPlayer.currentItem {
+            audioPlayer.pause()
+        }
         paused = true
         restartControlPanelTask()
     }
@@ -351,6 +346,7 @@ public class VideoPlayer: Sendable {
     public func stop() {
         tearDownObservers()
         player.replaceCurrentItem(with: nil)
+        audioPlayer.replaceCurrentItem(with: nil)
         title = ""
         details = ""
         duration = 0
@@ -372,54 +368,51 @@ public class VideoPlayer: Sendable {
     // Tricky: the observer callback closures must capture a weak self for safety, and execute on the MainActor
     /// Set up observers to register current media duration, current playback time, current bitrate, playback end event.
     private func setupObservers() {
-        // Time Observer (same as before)
         if timeObserver == nil {
             let interval = CMTime(seconds: 0.1, preferredTimescale: 1000)
-            timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            timeObserver = player.addPeriodicTimeObserver(
+                forInterval: interval,
+                queue: .main
+            ) { [weak self] time in
                 Task { @MainActor in
-                    guard let self = self else { return }
-                    if let event = self.player.currentItem?.accessLog()?.events.last {
-                        self.bitrate = event.indicatedBitrate
-                    } else {
-                        self.bitrate = 0
-                    }
-                    
-                    switch self.scrubState {
-                    case .notScrubbing:
-                        self.currentTime = time.seconds
-                    case .scrubStarted, .scrubEnded:
-                        return
-                    }
-                }
-            }
-        }
-        
-        // Instead of KVO on the player item’s duration, load the asset’s duration directly.
-        if let currentItem = player.currentItem {
-            let asset = currentItem.asset
-            asset.loadValuesAsynchronously(forKeys: ["duration"]) { [weak self] in
-                guard let self = self else { return }
-                var error: NSError? = nil
-                let status = asset.statusOfValue(forKey: "duration", error: &error)
-                if status == .loaded {
-                    let assetDuration = CMTimeGetSeconds(asset.duration)
-                    if !assetDuration.isNaN {
-                        Task { @MainActor in
-                            self.duration = assetDuration
+                    if let self {
+                        if let event = self.player.currentItem?.accessLog()?.events.last {
+                            self.bitrate = event.indicatedBitrate
+                        } else {
+                            self.bitrate = 0
+                        }
+
+                        switch self.scrubState {
+                        case .notScrubbing:
+                            self.currentTime = time.seconds
+                            self.syncAudioWithVideo()
+                            break
+                        case .scrubStarted: return
+                        case .scrubEnded: return
                         }
                     }
-                } else {
-                    // Optionally, handle errors here.
-                    print("Error loading duration: \(String(describing: error))")
                 }
             }
         }
-        
-        // Buffering observer remains unchanged.
+
+        if durationObserver == nil, let currentItem = player.currentItem {
+            durationObserver = currentItem.observe(
+                \.duration,
+                 options: [.new, .initial]
+            ) { [weak self] item, _ in
+                let duration = CMTimeGetSeconds(item.duration)
+                if !duration.isNaN {
+                    Task { @MainActor in
+                        self?.duration = duration
+                    }
+                }
+            }
+        }
+
         if bufferingObserver == nil {
             bufferingObserver = player.observe(
                 \.timeControlStatus,
-                options: [.new, .old, .initial]
+                 options: [.new, .old, .initial]
             ) { [weak self] player, status in
                 Task { @MainActor in
                     self?.buffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
@@ -429,8 +422,7 @@ public class VideoPlayer: Sendable {
                 }
             }
         }
-        
-        // Observe playback end.
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(onPlayReachedEnd),
@@ -438,6 +430,23 @@ public class VideoPlayer: Sendable {
             object: player.currentItem
         )
     }
+
+    private func syncAudioWithVideo() {
+        guard let videoTime = player.currentItem?.currentTime(),
+              let audioTime = audioPlayer.currentItem?.currentTime() else {
+            return
+        }
+
+        let timeDifference = CMTimeGetSeconds(videoTime) - CMTimeGetSeconds(audioTime)
+
+        // If the audio lags behind or is ahead, adjust it
+        if abs(timeDifference) > 0.2 { // Adjust threshold as needed
+            audioPlayer.seek(to: videoTime) { _ in
+                print("Audio synchronized with video at \(CMTimeGetSeconds(videoTime)) seconds")
+            }
+        }
+    }
+
 
     
     /// Tear down observers set up in `setupObservers()`.
