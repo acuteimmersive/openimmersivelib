@@ -35,6 +35,9 @@ public actor PlaylistReader {
     /// Resolution options parsed from the playlist resource at `url`.
     @MainActor
     private(set) public var resolutions: [ResolutionOption] = []
+    /// AudioOptions parsed from the playest resource at `url`
+    @MainActor
+    private(set) public var audios: [AudioOption] = []
     /// Error that caused `state` to be set to `.error`. Will be `nil` if `state` is not `.error`.
     @MainActor
     public var error: Error? {
@@ -84,6 +87,13 @@ public actor PlaylistReader {
         self.resolutions = resolutions
     }
     
+    /// Thread safe setter for the audio of the Playlist Reader
+    @MainActor
+    private func setAudios(_ audios: [AudioOption]) {
+        self.audios = audios
+    }
+    
+    
     /// Parses raw data to populate the Playlist Reader's properties.
     /// - Parameters:
     ///   - data: raw data to be parsed, likely the response of a web request,
@@ -96,6 +106,8 @@ public actor PlaylistReader {
         }
         
         let resolutions = parseResolutions(from: text)
+        let audios = parseAudioOptions(from: text)
+        
         
         if resolutions.isEmpty {
             throw PlaylistReaderError.NoAvailableResolutionError
@@ -103,6 +115,7 @@ public actor PlaylistReader {
         
         Task {
             await setResolutions(resolutions)
+            await setAudios(audios)
         }
     }
     
@@ -123,6 +136,7 @@ public actor PlaylistReader {
                let height = Int(resolution.height),
                let bitrate = Int(bandwidth.bitrate),
                index + 1 < lines.count {
+                let declarationLine = line // Capture the full declaration line
                 let url = {
                     // testing for host() ensures that the URL is absolute
                     if let playlistUrl = URL(string: lines[index + 1]),
@@ -137,7 +151,8 @@ public actor PlaylistReader {
                 let option = ResolutionOption(
                     size: CGSize(width: width, height: height),
                     bitrate: bitrate,
-                    url: url
+                    url: url,
+                    declarationLine: declarationLine
                 )
                 resolutions.append(option)
             }
@@ -145,4 +160,40 @@ public actor PlaylistReader {
         
         return resolutions.sorted { $0.size.width > $1.size.width }
     }
+    
+    /// Parses a list of Audio Options from
+    /// - Parameter text: text to be parsed, expected to be the contents of an HLS m3u8 playlist file.
+    /// - Returns: a list of Audio Options.
+    private func parseAudioOptions(from text: String) -> [AudioOption] {
+        var audioOptions: [AudioOption] = []
+        let audioSearch = /#EXT-X-MEDIA:TYPE=AUDIO,(?<attributes>.+)/
+        let languageSearch = /LANGUAGE="(?<language>[^"]+)"/
+        let uriSearch = /URI="(?<url>[^"]+)"/
+
+        let lines = text.components(separatedBy: .newlines)
+        for line in lines {
+            guard let _ = try? audioSearch.firstMatch(in: line) else { continue }
+            
+            // Fixed capture group access
+            guard let languageMatch = try? languageSearch.firstMatch(in: line) else { continue }
+            let language = String(languageMatch.output.language) // Add .output
+            
+            guard let uriMatch = try? uriSearch.firstMatch(in: line) else { continue }
+            let uriString = String(uriMatch.output.url) // Add .output
+            
+            let url: URL
+            if let absoluteUrl = URL(string: uriString), absoluteUrl.host != nil {
+                url = absoluteUrl
+            } else {
+                url = URL(filePath: uriString, relativeTo: self.url)
+            }
+            
+            let option = AudioOption(url: url, language: language, declarationLine: line)
+            audioOptions.append(option)
+        }
+        print("Found audio options")
+        print(audioOptions)
+        return audioOptions
+    }
+
 }
