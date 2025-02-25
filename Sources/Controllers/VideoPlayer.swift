@@ -104,6 +104,11 @@ public class VideoPlayer: Sendable {
     private var dismissControlPanelTask: Task<Void, Never>?
     private var playlistReader: PlaylistReader?
     private var playlistWriter: PlaylistWriter = PlaylistWriter()
+    private var isSyncingAudio = false
+    
+    private var lastSyncTime: TimeInterval = 0
+    private let syncThreshold: TimeInterval = 0.2
+    private let syncCooldown: TimeInterval = 2.0 // Don't sync more often than every 2 seconds
 
     //MARK: Immutable variables
     /// The video player
@@ -300,10 +305,15 @@ public class VideoPlayer: Sendable {
         if hasReachedEnd {
             player.seek(to: CMTime.zero)
         }
-        player.play()
+
         if let currentItem = audioPlayer.currentItem {
             print("playing audio")
-            audioPlayer.play()
+            if player.timeControlStatus == .paused && audioPlayer.timeControlStatus == .paused {
+                player.play()
+                audioPlayer.play()
+            }
+        }else{
+            player.play()
         }
         paused = false
         hasReachedEnd = false
@@ -312,12 +322,35 @@ public class VideoPlayer: Sendable {
     
     /// Pause media playback.
     public func pause() {
-        player.pause()
         if let currentItem = audioPlayer.currentItem {
             audioPlayer.pause()
+            player.pause()
+        }else{
+            player.pause()
         }
         paused = true
         restartControlPanelTask()
+    }
+    
+    public func synchSeparatePlayers(newTime: CMTime){
+        let dispatchGroup = DispatchGroup()
+
+        dispatchGroup.enter()
+        player.seek(to: newTime) { _ in
+            dispatchGroup.leave()
+        }
+
+        dispatchGroup.enter()
+        audioPlayer.seek(to: newTime) { _ in
+            dispatchGroup.leave()
+        }
+
+        // When both seeks are done, resume playback
+        dispatchGroup.notify(queue: .main) {
+            print("Both video and audio are synchronized, resuming playback")
+            self.player.play()
+            self.audioPlayer.play()
+        }
     }
     
     /// Jump back 15 seconds in media playback.
@@ -327,7 +360,11 @@ public class VideoPlayer: Sendable {
         }
         let newTime = time - CMTime(seconds: 15.0, preferredTimescale: 1000)
         hasReachedEnd = false
-        player.seek(to: newTime)
+        if let currentItem = audioPlayer.currentItem {
+            synchSeparatePlayers(newTime: newTime)
+        }else{
+            player.seek(to: newTime)
+        }
         restartControlPanelTask()
     }
     
@@ -338,7 +375,11 @@ public class VideoPlayer: Sendable {
         }
         let newTime = time + CMTime(seconds: 15.0, preferredTimescale: 1000)
         hasReachedEnd = false
-        player.seek(to: newTime)
+        if let currentItem = audioPlayer.currentItem {
+            synchSeparatePlayers(newTime: newTime)
+        }else{
+            player.seek(to: newTime)
+        }
         restartControlPanelTask()
     }
     
@@ -430,19 +471,83 @@ public class VideoPlayer: Sendable {
             object: player.currentItem
         )
     }
-
+    
+    
     private func syncAudioWithVideo() {
+        // Make sure both players have valid items and times
         guard let videoTime = player.currentItem?.currentTime(),
-              let audioTime = audioPlayer.currentItem?.currentTime() else {
+              let audioTime = audioPlayer.currentItem?.currentTime(),
+              audioPlayer.currentItem != nil else {
             return
         }
 
+        let currentTimeStamp = Date().timeIntervalSince1970
         let timeDifference = CMTimeGetSeconds(videoTime) - CMTimeGetSeconds(audioTime)
-
-        // If the audio lags behind or is ahead, adjust it
-        if abs(timeDifference) > 0.2 { // Adjust threshold as needed
-            audioPlayer.seek(to: videoTime) { _ in
-                print("Audio synchronized with video at \(CMTimeGetSeconds(videoTime)) seconds")
+        
+        // Only sync if:
+        // 1. The drift is significant (over threshold)
+        // 2. We're not already in the middle of syncing
+        // 3. We haven't synced recently (cooldown period)
+        // 4. The video is actually playing (don't sync while paused)
+        if abs(timeDifference) > syncThreshold &&
+           !isSyncingAudio &&
+           currentTimeStamp - lastSyncTime > syncCooldown &&
+           player.timeControlStatus == .playing {
+            
+            Task { @MainActor in
+                isSyncingAudio = true
+                lastSyncTime = currentTimeStamp
+            }
+            
+            // For minor drift (0.2-0.5 seconds), use a "smart seek" approach
+            if abs(timeDifference) < 0.5 {
+                // If video is PLAYING, we want to adjust audio WITHOUT disrupting video
+                let targetTime = videoTime
+                
+                // Use a single seek method with tolerance for smaller adjustments
+                let tolerance = CMTime(seconds: 0.1, preferredTimescale: 1000)
+                audioPlayer.seek(to: targetTime, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] (finished: Bool) in
+                    guard let self = self, finished else { return }
+                    Task { @MainActor in
+                        self.isSyncingAudio = false
+                    }
+                }
+            }
+            // For major drift (>0.5 seconds), use a more aggressive approach but limit frequency
+            else {
+                let wasPlaying = (player.timeControlStatus == .playing)
+                
+                // For larger drifts, briefly pause both, sync, then resume
+                pause()
+                
+                // Use a DispatchGroup to ensure both seeks complete before resuming
+                let dispatchGroup = DispatchGroup()
+                
+                // Optimize the sync by having video and audio seek to a common time
+                let commonTime = videoTime
+                
+                dispatchGroup.enter()
+                player.seek(to: commonTime, toleranceBefore: .zero, toleranceAfter: .zero) { (finished: Bool) in
+                    dispatchGroup.leave()
+                }
+                
+                dispatchGroup.enter()
+                audioPlayer.seek(to: commonTime, toleranceBefore: .zero, toleranceAfter: .zero) { (finished: Bool) in
+                    dispatchGroup.leave()
+                }
+                
+                // When both seeks are complete, resume playback
+                dispatchGroup.notify(queue: .main) { [weak self] in
+                    guard let self = self else { return }
+                    if wasPlaying {
+                        self.player.play()
+                        self.audioPlayer.play()
+                    }
+                    
+                    Task { @MainActor in
+                        self.isSyncingAudio = false
+                    }
+                }
             }
         }
     }
