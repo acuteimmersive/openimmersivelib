@@ -81,16 +81,25 @@ public class VideoPlayer: Sendable {
               cancelControlPanelTask()
               break
           case .scrubEnded:
+              self.pause()
               let seekTime = CMTime(seconds: currentTime, preferredTimescale: 1000)
               player.seek(to: seekTime) { [weak self] finished in
                   guard finished else {
                       return
                   }
+                  // Seek the audio player to the exact same position
+                  self?.audioPlayer.seek(to: seekTime) { [weak self] finished in
+                      guard finished else {
+                          return
+                      }
+                  }
+                  
                   Task { @MainActor in
                       self?.scrubState = .notScrubbing
                       self?.restartControlPanelTask()
                   }
               }
+              self.play()
               hasReachedEnd = false
               break
           }
@@ -114,6 +123,8 @@ public class VideoPlayer: Sendable {
     /// The video player
     public let player = AVPlayer()
     public let audioPlayer = AVPlayer()
+    public let videoPlayerLayer: AVPlayerLayer
+    public let audioPlayerLayer: AVPlayerLayer
     public let videoMaterial: VideoMaterial
     
     //MARK: Public methods
@@ -137,6 +148,8 @@ public class VideoPlayer: Sendable {
         self.dismissControlPanelTask = dismissControlPanelTask
         
         self.videoMaterial = VideoMaterial(avPlayer: player)
+        self.videoPlayerLayer = AVPlayerLayer(player: player)
+        self.audioPlayerLayer = AVPlayerLayer(player: audioPlayer)
     }
     
     /// Instruct the UI to reveal the control panel.
@@ -168,6 +181,99 @@ public class VideoPlayer: Sendable {
             withAnimation {
                 shouldShowResolutionOptions.toggle()
             }
+        }
+    }
+    
+    /// Play or unpause media playback.
+    ///
+    /// If playback has reached the end of the video (`hasReachedEnd` is true), play from the beginning.
+    /// If playback has reached the end of the video (`hasReachedEnd` is true), play from the beginning.
+    public func play() {
+      if hasReachedEnd {
+          player.seek(to: CMTime.zero)
+      }
+
+      if let currentItem = audioPlayer.currentItem {
+          print("playing audio")
+          player.play()
+          audioPlayer.play()
+      }else{
+          player.play()
+      }
+      paused = false
+      hasReachedEnd = false
+      restartControlPanelTask()
+    }
+      
+      /// Pause media playback.
+    public func pause() {
+      if let currentItem = audioPlayer.currentItem {
+          audioPlayer.pause()
+          player.pause()
+      }else{
+          player.pause()
+      }
+      paused = true
+      restartControlPanelTask()
+    }
+
+    /// Jump back 15 seconds in media playback.
+      public func minus15() {
+          self.pause()
+          guard let time = player.currentItem?.currentTime() else {
+              return
+          }
+          
+          let newTime = time - CMTime(seconds: 15.0, preferredTimescale: 1000)
+          hasReachedEnd = false
+          if let currentItem = audioPlayer.currentItem {
+              player.seek(to: newTime)
+              audioPlayer.seek(to: newTime)
+          }else{
+              player.seek(to: newTime)
+          }
+          self.play()
+          restartControlPanelTask()
+      }
+      
+      /// Jump forward 15 seconds in media playback.
+      public func plus15() {
+          guard let time = player.currentItem?.currentTime() else {
+              return
+          }
+          self.pause()
+          let newTime = time + CMTime(seconds: 15.0, preferredTimescale: 1000)
+          hasReachedEnd = false
+          if let currentItem = audioPlayer.currentItem {
+              player.seek(to: newTime)
+              audioPlayer.seek(to: newTime)
+          }else{
+              player.seek(to: newTime)
+          }
+          self.play()
+          restartControlPanelTask()
+      }
+      
+      /// Stop media playback and unload the current media.
+      public func stop() {
+          tearDownObservers()
+          player.replaceCurrentItem(with: nil)
+          audioPlayer.replaceCurrentItem(with: nil)
+          title = ""
+          details = ""
+          duration = 0
+          currentTime = 0
+          bitrate = 0
+      }
+      
+    
+    //MARK: Private methods
+    /// Callback for the end of playback. Reveals the control panel if it was hidden.
+    @objc private func onPlayReachedEnd() {
+        Task { @MainActor in
+            hasReachedEnd = true
+            paused = true
+            showControlPanel()
         }
     }
     
@@ -265,9 +371,12 @@ public class VideoPlayer: Sendable {
             do{
                 let audioPlayerItem = AVPlayerItem(url: firstAudioOption.url)
                 let videoPlayerItem = AVPlayerItem(url: url)
+                // Synchronize player2 with player1's timebase
+                let syncLayer = AVSynchronizedLayer(playerItem: player.currentItem!)
+                syncLayer.addSublayer(self.audioPlayerLayer)
+
                 audioPlayer.replaceCurrentItem(with: audioPlayerItem)
                 player.replaceCurrentItem(with: videoPlayerItem)
-                syncAudioWithVideo()
             }catch {
                 print("Error writing the temporary playlist")
             }
@@ -298,260 +407,74 @@ public class VideoPlayer: Sendable {
         
     }
     
-    /// Play or unpause media playback.
-    ///
-    /// If playback has reached the end of the video (`hasReachedEnd` is true), play from the beginning.
-    public func play() {
-        if hasReachedEnd {
-            player.seek(to: CMTime.zero)
-        }
-
-        if let currentItem = audioPlayer.currentItem {
-            print("playing audio")
-            if player.timeControlStatus == .paused && audioPlayer.timeControlStatus == .paused {
-                player.play()
-                audioPlayer.play()
-            }
-        }else{
-            player.play()
-        }
-        paused = false
-        hasReachedEnd = false
-        restartControlPanelTask()
-    }
-    
-    /// Pause media playback.
-    public func pause() {
-        if let currentItem = audioPlayer.currentItem {
-            audioPlayer.pause()
-            player.pause()
-        }else{
-            player.pause()
-        }
-        paused = true
-        restartControlPanelTask()
-    }
-    
-    public func synchSeparatePlayers(newTime: CMTime){
-        let dispatchGroup = DispatchGroup()
-
-        dispatchGroup.enter()
-        player.seek(to: newTime) { _ in
-            dispatchGroup.leave()
-        }
-
-        dispatchGroup.enter()
-        audioPlayer.seek(to: newTime) { _ in
-            dispatchGroup.leave()
-        }
-
-        // When both seeks are done, resume playback
-        dispatchGroup.notify(queue: .main) {
-            print("Both video and audio are synchronized, resuming playback")
-            self.player.play()
-            self.audioPlayer.play()
-        }
-    }
-    
-    /// Jump back 15 seconds in media playback.
-    public func minus15() {
-        guard let time = player.currentItem?.currentTime() else {
-            return
-        }
-        let newTime = time - CMTime(seconds: 15.0, preferredTimescale: 1000)
-        hasReachedEnd = false
-        if let currentItem = audioPlayer.currentItem {
-            synchSeparatePlayers(newTime: newTime)
-        }else{
-            player.seek(to: newTime)
-        }
-        restartControlPanelTask()
-    }
-    
-    /// Jump forward 15 seconds in media playback.
-    public func plus15() {
-        guard let time = player.currentItem?.currentTime() else {
-            return
-        }
-        let newTime = time + CMTime(seconds: 15.0, preferredTimescale: 1000)
-        hasReachedEnd = false
-        if let currentItem = audioPlayer.currentItem {
-            synchSeparatePlayers(newTime: newTime)
-        }else{
-            player.seek(to: newTime)
-        }
-        restartControlPanelTask()
-    }
-    
-    /// Stop media playback and unload the current media.
-    public func stop() {
-        tearDownObservers()
-        player.replaceCurrentItem(with: nil)
-        audioPlayer.replaceCurrentItem(with: nil)
-        title = ""
-        details = ""
-        duration = 0
-        currentTime = 0
-        bitrate = 0
-    }
-    
-    //MARK: Private methods
-    /// Callback for the end of playback. Reveals the control panel if it was hidden.
-    @objc private func onPlayReachedEnd() {
-        Task { @MainActor in
-            hasReachedEnd = true
-            paused = true
-            showControlPanel()
-        }
-    }
     
     // Observers are needed to extract the current playback time and total duration of the media
     // Tricky: the observer callback closures must capture a weak self for safety, and execute on the MainActor
     /// Set up observers to register current media duration, current playback time, current bitrate, playback end event.
     private func setupObservers() {
-        if timeObserver == nil {
-            let interval = CMTime(seconds: 0.1, preferredTimescale: 1000)
-            timeObserver = player.addPeriodicTimeObserver(
-                forInterval: interval,
-                queue: .main
-            ) { [weak self] time in
-                Task { @MainActor in
-                    if let self {
-                        if let event = self.player.currentItem?.accessLog()?.events.last {
-                            self.bitrate = event.indicatedBitrate
-                        } else {
-                            self.bitrate = 0
-                        }
-
-                        switch self.scrubState {
-                        case .notScrubbing:
-                            self.currentTime = time.seconds
-                            self.syncAudioWithVideo()
-                            break
-                        case .scrubStarted: return
-                        case .scrubEnded: return
-                        }
-                    }
-                }
-            }
-        }
-
-        if durationObserver == nil, let currentItem = player.currentItem {
-            durationObserver = currentItem.observe(
-                \.duration,
-                 options: [.new, .initial]
-            ) { [weak self] item, _ in
-                let duration = CMTimeGetSeconds(item.duration)
-                if !duration.isNaN {
+            if timeObserver == nil {
+                let interval = CMTime(seconds: 0.1, preferredTimescale: 1000)
+                timeObserver = player.addPeriodicTimeObserver(
+                    forInterval: interval,
+                    queue: .main
+                ) { [weak self] time in
                     Task { @MainActor in
-                        self?.duration = duration
+                        if let self {
+                            if let event = self.player.currentItem?.accessLog()?.events.last {
+                                self.bitrate = event.indicatedBitrate
+                            } else {
+                                self.bitrate = 0
+                            }
+                            
+                            switch self.scrubState {
+                            case .notScrubbing:
+                                self.currentTime = time.seconds
+                                break
+                            case .scrubStarted: return
+                            case .scrubEnded: return
+                            }
+                        }
                     }
                 }
-            }
-        }
-
-        if bufferingObserver == nil {
-            bufferingObserver = player.observe(
-                \.timeControlStatus,
-                 options: [.new, .old, .initial]
-            ) { [weak self] player, status in
-                Task { @MainActor in
-                    self?.buffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
-                    if (status.oldValue, status.newValue) == (.waitingToPlayAtSpecifiedRate, .playing) {
-                        self?.restartControlPanelTask()
-                    }
-                }
-            }
-        }
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(onPlayReachedEnd),
-            name: AVPlayerItem.didPlayToEndTimeNotification,
-            object: player.currentItem
-        )
-    }
-    
-    
-    private func syncAudioWithVideo() {
-        // Make sure both players have valid items and times
-        guard let videoTime = player.currentItem?.currentTime(),
-              let audioTime = audioPlayer.currentItem?.currentTime(),
-              audioPlayer.currentItem != nil else {
-            return
-        }
-
-        let currentTimeStamp = Date().timeIntervalSince1970
-        let timeDifference = CMTimeGetSeconds(videoTime) - CMTimeGetSeconds(audioTime)
-        
-        // Only sync if:
-        // 1. The drift is significant (over threshold)
-        // 2. We're not already in the middle of syncing
-        // 3. We haven't synced recently (cooldown period)
-        // 4. The video is actually playing (don't sync while paused)
-        if abs(timeDifference) > syncThreshold &&
-           !isSyncingAudio &&
-           currentTimeStamp - lastSyncTime > syncCooldown &&
-           player.timeControlStatus == .playing {
-            
-            Task { @MainActor in
-                isSyncingAudio = true
-                lastSyncTime = currentTimeStamp
             }
             
-            // For minor drift (0.2-0.5 seconds), use a "smart seek" approach
-            if abs(timeDifference) < 0.5 {
-                // If video is PLAYING, we want to adjust audio WITHOUT disrupting video
-                let targetTime = videoTime
-                
-                // Use a single seek method with tolerance for smaller adjustments
-                let tolerance = CMTime(seconds: 0.1, preferredTimescale: 1000)
-                audioPlayer.seek(to: targetTime, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] (finished: Bool) in
-                    guard let self = self, finished else { return }
-                    Task { @MainActor in
-                        self.isSyncingAudio = false
+            if durationObserver == nil, let currentItem = player.currentItem {
+                durationObserver = currentItem.observe(
+                    \.duration,
+                     options: [.new, .initial]
+                ) { [weak self] item, _ in
+                    let duration = CMTimeGetSeconds(item.duration)
+                    if !duration.isNaN {
+                        Task { @MainActor in
+                            self?.duration = duration
+                        }
                     }
                 }
             }
-            // For major drift (>0.5 seconds), use a more aggressive approach but limit frequency
-            else {
-                let wasPlaying = (player.timeControlStatus == .playing)
-                
-                // For larger drifts, briefly pause both, sync, then resume
-                pause()
-                
-                // Use a DispatchGroup to ensure both seeks complete before resuming
-                let dispatchGroup = DispatchGroup()
-                
-                // Optimize the sync by having video and audio seek to a common time
-                let commonTime = videoTime
-                
-                dispatchGroup.enter()
-                player.seek(to: commonTime, toleranceBefore: .zero, toleranceAfter: .zero) { (finished: Bool) in
-                    dispatchGroup.leave()
-                }
-                
-                dispatchGroup.enter()
-                audioPlayer.seek(to: commonTime, toleranceBefore: .zero, toleranceAfter: .zero) { (finished: Bool) in
-                    dispatchGroup.leave()
-                }
-                
-                // When both seeks are complete, resume playback
-                dispatchGroup.notify(queue: .main) { [weak self] in
-                    guard let self = self else { return }
-                    if wasPlaying {
-                        self.player.play()
-                        self.audioPlayer.play()
-                    }
-                    
+            
+            if bufferingObserver == nil {
+                bufferingObserver = player.observe(
+                    \.timeControlStatus,
+                     options: [.new, .old, .initial]
+                ) { [weak self] player, status in
                     Task { @MainActor in
-                        self.isSyncingAudio = false
+                        self?.buffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+                        // buffering doesn't bring up the control panel but prevents auto dismiss.
+                        // auto dismiss after play resumed.
+                        if (status.oldValue, status.newValue) == (.waitingToPlayAtSpecifiedRate, .playing) {
+                            self?.restartControlPanelTask()
+                        }
                     }
                 }
             }
+            
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(onPlayReachedEnd),
+                name: AVPlayerItem.didPlayToEndTimeNotification,
+                object: player.currentItem
+            )
         }
-    }
-
 
     
     /// Tear down observers set up in `setupObservers()`.
