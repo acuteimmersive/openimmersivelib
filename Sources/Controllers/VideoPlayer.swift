@@ -35,6 +35,8 @@ public class VideoPlayer: Sendable {
     /// The vertical field of view for the current media
     public var verticalFieldOfView: Float {
         get {
+            // some 180/360 videos are originally encoded with non-square pixels, so don't use the aspect ratio for those.
+            if self.horizontalFieldOfView >= 180.0 { return 180.0 }
             return max(0, min(180, self.horizontalFieldOfView / aspectRatio))
         }
     }
