@@ -23,7 +23,7 @@ public class Config {
     /// Tint for the scrubber (String): RGB or RGBA color in hexadecimal in the #RRGGBB or #RRGGBBAA format.
     public var controlPanelScrubberTint: Color = .orange.opacity(0.7)
     /// Radius of the video screen's sphere in meters (Number): make sure it's large enough to fit the control panel.
-    public var videoScreenSphereRadius: Float = 2.0
+    public var videoScreenSphereRadius: Float = 1000.0
     
     /// Shared config object with values that can be overridden by the app.
     @MainActor
