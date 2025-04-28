@@ -33,9 +33,11 @@ public struct ImmersivePlayer: View {
     /// - Parameters:
     ///   - selectedStream: the stream for which the player will be open.
     ///   - closeAction: the callback to execute when the user closes the immersive player.
-    public init(selectedStream: StreamModel, closeAction: (() -> Void)? = nil) {
+    ///   - playbackEndedAction: the callback to execute when playback reaches the end of the video.
+    public init(selectedStream: StreamModel, closeAction: (() -> Void)? = nil, playbackEndedAction: (() -> Void)? = nil) {
         self.selectedStream = selectedStream
         self.closeAction = closeAction
+        self.videoPlayer.playbackEndedAction = playbackEndedAction
     }
     
     public var body: some View {
