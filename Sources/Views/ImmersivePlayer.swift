@@ -97,7 +97,7 @@ public struct ImmersivePlayer: View {
             videoPlayer.showControlPanel()
             videoPlayer.play()
             
-            videoScreen.update(source: videoPlayer)
+            videoScreen.update(source: videoPlayer, projection: selectedStream.projection)
         }
         .onDisappear {
             videoPlayer.stop()

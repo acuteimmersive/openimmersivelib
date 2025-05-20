@@ -30,11 +30,11 @@ public class VideoPlayer: Sendable {
     private(set) var hasReachedEnd: Bool = false
     /// The callback to execute when playback reaches the end of the video.
     public var playbackEndedAction: (() -> Void)?
-    /// The aspect ratio of the current media (width / height).
+    /// The aspect ratio of the current media (width / height) (equirectangular projection only).
     private(set) var aspectRatio: Float = 1.0
-    /// The horizontal field of view for the current media
+    /// The horizontal field of view for the current media (equirectangular projection only).
     private(set) var horizontalFieldOfView: Float = 180.0
-    /// The vertical field of view for the current media
+    /// The vertical field of view for the current media (equirectangular projection only).
     public var verticalFieldOfView: Float {
         get {
             // some 180/360 videos are originally encoded with non-square pixels, so don't use the aspect ratio for those.
@@ -42,7 +42,7 @@ public class VideoPlayer: Sendable {
             return max(0, min(180, self.horizontalFieldOfView / aspectRatio))
         }
     }
-    /// The bitrate of the current video stream (0 if none).
+    /// The bitrate of the current video stream (0 if none), only available if streaming from a HLS server (m3u8).
     private(set) var bitrate: Double = 0
     /// Resolution options available for the video stream, only available if streaming from a HLS server (m3u8).
     private(set) var resolutionOptions: [ResolutionOption] = []
@@ -109,7 +109,6 @@ public class VideoPlayer: Sendable {
     //MARK: Immutable variables
     /// The video player
     public let player = AVPlayer()
-    public let videoMaterial: VideoMaterial
     
     //MARK: Public methods
     /// Public initializer for visibility.
@@ -131,8 +130,6 @@ public class VideoPlayer: Sendable {
         self.durationObserver = durationObserver
         self.bufferingObserver = bufferingObserver
         self.dismissControlPanelTask = dismissControlPanelTask
-        
-        self.videoMaterial = VideoMaterial(avPlayer: player)
     }
     
     /// Instruct the UI to reveal the control panel.
@@ -184,23 +181,20 @@ public class VideoPlayer: Sendable {
         scrubState = .notScrubbing
         setupObservers()
         
-        // Set the video format to the forced field of view as provided by the StreamModel object, if available
-        if let forceFieldOfView = stream.forceFieldOfView {
+        // If the video format is equirectangular, extract the field of view (horizontal & vertical) and aspect ratio
+        if case .equirectangular(let fieldOfView, let forceFov) = stream.projection {
+            horizontalFieldOfView = max(0, min(360, fieldOfView))
+            
             // Detect resolution and field of view, if available
-            horizontalFieldOfView = max(0, min(360, forceFieldOfView))
-        } else {
-            // Set the video format to the fallback field of view as provided by the StreamModel object,
-            // then detect resolution and field of view encoded in the media, if available
-            horizontalFieldOfView = max(0, min(360, stream.fallbackFieldOfView))
             Task { [self] in
                 guard let (resolution, horizontalFieldOfView) =
                         await VideoTools.getVideoDimensions(asset: asset) else {
                     return
                 }
-                if let horizontalFieldOfView {
+                self.aspectRatio = Float(resolution.width / resolution.height)
+                if !forceFov, let horizontalFieldOfView {
                     self.horizontalFieldOfView = max(0, min(360, horizontalFieldOfView))
                 }
-                self.aspectRatio = Float(resolution.width / resolution.height)
             }
         }
         
