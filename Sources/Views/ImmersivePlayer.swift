@@ -127,15 +127,13 @@ public struct ImmersivePlayer: View {
     
     /// Programmatically generates a tap catching entity in the shape of a large invisible box in front of the viewer.
     /// Taps captured by this invisible shape will toggle the control panel on and off.
-    /// - Parameters:
-    ///   - debug: if `true`, will make the box red for debug purposes (default false).
     /// - Returns: a new tap catcher entity.
-    private func makeTapCatcher(debug: Bool = false) -> some Entity {
+    private func makeTapCatcher() -> some Entity {
         let collisionShape: ShapeResource =
             .generateBox(width: 100, height: 100, depth: 1)
             .offsetBy(translation: [0.0, 0.0, -5.0])
         
-        let entity = debug ?
+        let entity = Config.shared.tapCatcherShowDebug ?
         ModelEntity(
             mesh: MeshResource(shape: collisionShape),
             materials: [UnlitMaterial(color: .red)]
