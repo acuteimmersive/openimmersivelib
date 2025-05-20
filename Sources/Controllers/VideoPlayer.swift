@@ -142,6 +142,7 @@ public class VideoPlayer: Sendable {
     /// Instruct the UI to hide the control panel.
     public func hideControlPanel() {
         withAnimation {
+            shouldShowResolutionOptions = false
             shouldShowControlPanel = false
         }
     }
@@ -206,7 +207,9 @@ public class VideoPlayer: Sendable {
                 Task { @MainActor in
                     if case .success = reader.state,
                        reader.resolutions.count > 0 {
-                        self.resolutionOptions = reader.resolutions
+                        self.resolutionOptions = reader.resolutions.sorted(by: { lhs, rhs in
+                            lhs.bitrate < rhs.bitrate
+                        })
                         let defaultResolution = reader.resolutions.first!.size
                         self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
                     }
@@ -224,13 +227,13 @@ public class VideoPlayer: Sendable {
             return
         }
         
+        withAnimation {
+            shouldShowResolutionOptions = false
+        }
+        
         guard asset.url != url else {
             // already playing the correct url
             return
-        }
-        
-        withAnimation {
-            shouldShowResolutionOptions = false
         }
         
         // temporarily stop the observers to stop them from interfering in the state changes

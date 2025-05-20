@@ -138,15 +138,23 @@ fileprivate struct ResolutionSelector: View {
             if videoPlayer.shouldShowResolutionOptions {
                 Spacer()
                 
-                Button("Auto") {
+                Button {
                     videoPlayer.openResolutionOption(index: -1)
+                } label: {
+                    Text("Auto")
+                        .font(.headline)
                 }
                 
                 let options = videoPlayer.resolutionOptions
                 let zippedOptions = Array(zip(options.indices, options))
                 ForEach(zippedOptions, id: \.0) { index, option in
-                    Button(option.description) {
+                    Button {
                         videoPlayer.openResolutionOption(index: index)
+                    } label: {
+                        Text(option.resolutionString)
+                            .font(.subheadline)
+                        Text(option.bitrateString)
+                            .font(.caption)
                     }
                 }
             }
