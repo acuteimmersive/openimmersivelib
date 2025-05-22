@@ -133,9 +133,6 @@ public struct ImmersivePlayer: View {
             videoPlayer.stop()
             videoPlayer.hideControlPanel()
             headTracker.stop()
-            if selectedStream.isSecurityScoped {
-                selectedStream.url.stopAccessingSecurityScopedResource()
-            }
         }
         .gesture(TapGesture()
             .targetedToAnyEntity()

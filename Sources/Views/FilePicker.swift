@@ -33,11 +33,14 @@ public struct FilePicker: View {
         ) { result in
             switch result {
             case .success(let url):
+                // Hack: this should be mirrored by url.stopAccessingSecurityScopedResource(),
+                // but it would prevent playing the same file twice.
+                url.startAccessingSecurityScopedResource()
+                
                 let stream = StreamModel(
                     title: url.lastPathComponent,
                     details: "From Local Files",
-                    url: url,
-                    isSecurityScoped: url.startAccessingSecurityScopedResource()
+                    url: url
                 )
                 loadStreamAction(stream)
                 break

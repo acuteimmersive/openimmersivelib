@@ -20,6 +20,8 @@ public class VideoPlayer: Sendable {
     private(set) public var title: String = ""
     /// A short description of the current video (empty string if none).
     private(set) public var details: String = ""
+    /// The url of the current video.
+    private(set) public var url: URL?
     /// The duration in seconds of the current video (0 if none).
     private(set) public var duration: Double = 0
     /// `true` if playback is currently paused, or if playback has completed.
@@ -102,25 +104,7 @@ public class VideoPlayer: Sendable {
     
     //MARK: Public methods
     /// Public initializer for visibility.
-    public init(title: String = "", details: String = "", duration: Double = 0, paused: Bool = false, buffering: Bool = false, hasReachedEnd: Bool = false, playbackEndedAction: CustomAction? = nil, aspectRatio: Float? = nil, horizontalFieldOfView: Float? = nil, bitrate: Double = 0, shouldShowControlPanel: Bool = true, currentTime: Double = 0, scrubState: VideoPlayer.ScrubState = .notScrubbing, timeObserver: Any? = nil, durationObserver: NSKeyValueObservation? = nil, bufferingObserver: NSKeyValueObservation? = nil, dismissControlPanelTask: Task<Void, Never>? = nil) {
-        self.title = title
-        self.details = details
-        self.duration = duration
-        self.paused = paused
-        self.buffering = buffering
-        self.hasReachedEnd = hasReachedEnd
-        self.playbackEndedAction = playbackEndedAction
-        if let aspectRatio { self.aspectRatio = aspectRatio }
-        if let horizontalFieldOfView { self.horizontalFieldOfView = horizontalFieldOfView }
-        self.bitrate = bitrate
-        self.shouldShowControlPanel = shouldShowControlPanel
-        self.currentTime = currentTime
-        self.scrubState = scrubState
-        self.timeObserver = timeObserver
-        self.durationObserver = durationObserver
-        self.bufferingObserver = bufferingObserver
-        self.dismissControlPanelTask = dismissControlPanelTask
-    }
+    public init() {}
     
     /// Instruct the UI to reveal the control panel.
     public func showControlPanel() {
@@ -166,6 +150,7 @@ public class VideoPlayer: Sendable {
         // Clean up the AVPlayer first, avoid bad states
         stop()
         
+        url = stream.url
         title = stream.title
         details = stream.details
         
