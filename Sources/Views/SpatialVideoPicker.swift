@@ -14,12 +14,12 @@ public struct SpatialVideoPicker: View {
     @State private var selectedItem: PhotosPickerItem?
     
     /// The callback to execute after a valid spatial video has been picked.
-    var loadStreamAction: (StreamModel) -> Void
+    var loadStreamAction: StreamAction
     
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - loadStreamAction: the callback to execute after a file has been picked. 
-    public init(loadStreamAction: @escaping (StreamModel) -> Void) {
+    public init(loadStreamAction: @escaping StreamAction) {
         self.loadStreamAction = loadStreamAction
     }
     

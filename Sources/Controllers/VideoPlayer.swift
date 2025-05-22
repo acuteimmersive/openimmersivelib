@@ -17,23 +17,23 @@ import RealityFoundation
 public class VideoPlayer: Sendable {
     //MARK: Variables accessible to the UI
     /// The title of the current video (empty string if none).
-    private(set) var title: String = ""
+    private(set) public var title: String = ""
     /// A short description of the current video (empty string if none).
-    private(set) var details: String = ""
+    private(set) public var details: String = ""
     /// The duration in seconds of the current video (0 if none).
-    private(set) var duration: Double = 0
+    private(set) public var duration: Double = 0
     /// `true` if playback is currently paused, or if playback has completed.
-    private(set) var paused: Bool = false
+    private(set) public var paused: Bool = false
     /// `true` if playback is temporarily interrupted due to buffering.
-    private(set) var buffering: Bool = false
+    private(set) public var buffering: Bool = false
     /// `true` if playback reached the end of the video and is no longer playing.
-    private(set) var hasReachedEnd: Bool = false
+    private(set) public var hasReachedEnd: Bool = false
     /// The callback to execute when playback reaches the end of the video.
-    public var playbackEndedAction: (() -> Void)?
+    public var playbackEndedAction: CustomAction?
     /// The aspect ratio of the current media (width / height) (equirectangular projection only).
-    private(set) var aspectRatio: Float = 1.0
+    private(set) public var aspectRatio: Float = 1.0
     /// The horizontal field of view for the current media (equirectangular projection only).
-    private(set) var horizontalFieldOfView: Float = 180.0
+    private(set) public var horizontalFieldOfView: Float = 180.0
     /// The vertical field of view for the current media (equirectangular projection only).
     public var verticalFieldOfView: Float {
         get {
@@ -43,23 +43,13 @@ public class VideoPlayer: Sendable {
         }
     }
     /// The bitrate of the current video stream (0 if none), only available if streaming from a HLS server (m3u8).
-    private(set) var bitrate: Double = 0
+    private(set) public var bitrate: Double = 0
     /// Resolution options available for the video stream, only available if streaming from a HLS server (m3u8).
-    private(set) var resolutionOptions: [ResolutionOption] = []
+    private(set) public var resolutionOptions: [ResolutionOption] = []
     /// `true` if the control panel should be visible to the user.
-    private(set) var shouldShowControlPanel: Bool = true {
-        didSet {
-            if shouldShowControlPanel {
-                restartControlPanelTask()
-            }
-        }
-    }
+    private(set) public var shouldShowControlPanel: Bool = true
     /// `true` if the control panel should present resolution options to the user.
-    private(set) var shouldShowResolutionOptions: Bool = false {
-        didSet {
-            restartControlPanelTask()
-        }
-    }
+    private(set) public var shouldShowResolutionOptions: Bool = false
     
     /// The current time in seconds of the current video (0 if none).
     ///
@@ -112,7 +102,7 @@ public class VideoPlayer: Sendable {
     
     //MARK: Public methods
     /// Public initializer for visibility.
-    public init(title: String = "", details: String = "", duration: Double = 0, paused: Bool = false, buffering: Bool = false, hasReachedEnd: Bool = false, playbackEndedAction: (() -> Void)? = nil, aspectRatio: Float? = nil, horizontalFieldOfView: Float? = nil, bitrate: Double = 0, shouldShowControlPanel: Bool = true, currentTime: Double = 0, scrubState: VideoPlayer.ScrubState = .notScrubbing, timeObserver: Any? = nil, durationObserver: NSKeyValueObservation? = nil, bufferingObserver: NSKeyValueObservation? = nil, dismissControlPanelTask: Task<Void, Never>? = nil) {
+    public init(title: String = "", details: String = "", duration: Double = 0, paused: Bool = false, buffering: Bool = false, hasReachedEnd: Bool = false, playbackEndedAction: CustomAction? = nil, aspectRatio: Float? = nil, horizontalFieldOfView: Float? = nil, bitrate: Double = 0, shouldShowControlPanel: Bool = true, currentTime: Double = 0, scrubState: VideoPlayer.ScrubState = .notScrubbing, timeObserver: Any? = nil, durationObserver: NSKeyValueObservation? = nil, bufferingObserver: NSKeyValueObservation? = nil, dismissControlPanelTask: Task<Void, Never>? = nil) {
         self.title = title
         self.details = details
         self.duration = duration
@@ -137,6 +127,7 @@ public class VideoPlayer: Sendable {
         withAnimation {
             shouldShowControlPanel = true
         }
+        restartControlPanelTask()
     }
     
     /// Instruct the UI to hide the control panel.
@@ -149,8 +140,10 @@ public class VideoPlayer: Sendable {
     
     /// Instruct the UI to toggle the visibility of the control panel.
     public func toggleControlPanel() {
-        withAnimation {
-            shouldShowControlPanel.toggle()
+        if shouldShowControlPanel {
+            hideControlPanel()
+        } else {
+            showControlPanel()
         }
     }
     
@@ -162,6 +155,7 @@ public class VideoPlayer: Sendable {
             withAnimation {
                 shouldShowResolutionOptions.toggle()
             }
+            restartControlPanelTask()
         }
     }
     
@@ -333,7 +327,7 @@ public class VideoPlayer: Sendable {
     /// Set up observers to register current media duration, current playback time, current bitrate, playback end event.
     private func setupObservers() {
         if timeObserver == nil {
-            let interval = CMTime(seconds: 0.1, preferredTimescale: 1000)
+            let interval = CMTime(seconds: 0.005, preferredTimescale: 1000)
             timeObserver = player.addPeriodicTimeObserver(
                 forInterval: interval,
                 queue: .main

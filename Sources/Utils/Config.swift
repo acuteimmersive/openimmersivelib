@@ -16,6 +16,8 @@ public class Config {
     public var controlPanelHorizontalOffset: Float = 0.7
     /// Tilt of the control panel in degrees (Number): + is tilted up, - is tilted down.
     public var controlPanelTilt: Float = 12.0
+    /// Maximum height of the control panel's media info box (Number): title and details text will be truncated.
+    public var controlPanelMediaInfoMaxHeight: Float = 140
     /// Show or hide the control panel's bitrate readout for streams (Boolean).
     public var controlPanelShowBitrate: Bool = true
     /// Show or hide the control panel's resolution selector for streams (Boolean).
@@ -54,6 +56,10 @@ public class Config {
         
         if let controlPanelTiltValue = config["controlPanelTilt"] as? Float {
             controlPanelTilt = controlPanelTiltValue
+        }
+        
+        if let controlPanelMediaInfoMaxHeightValue = config["controlPanelMediaInfoMaxHeight"] as? Float {
+            controlPanelMediaInfoMaxHeight = controlPanelMediaInfoMaxHeightValue
         }
         
         if let controlPanelShowBitrateValue = config["controlPanelShowBitrate"] as? Bool {
