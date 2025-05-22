@@ -115,8 +115,7 @@ public struct StreamUrlInput: View {
         let stream = StreamModel(
             title: "HLS Stream",
             details: url.absoluteString,
-            url: url,
-            isSecurityScoped: false
+            url: url
         )
         
         loadStreamAction(stream)
