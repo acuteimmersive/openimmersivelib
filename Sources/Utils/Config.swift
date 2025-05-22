@@ -16,14 +16,18 @@ public class Config {
     public var controlPanelHorizontalOffset: Float = 0.7
     /// Tilt of the control panel in degrees (Number): + is tilted up, - is tilted down.
     public var controlPanelTilt: Float = 12.0
-    /// Show or hide the control panel's bitrate readout for streams (Boolean)
+    /// Maximum height of the control panel's media info box (Number): title and details text will be truncated.
+    public var controlPanelMediaInfoMaxHeight: Float = 140
+    /// Show or hide the control panel's bitrate readout for streams (Boolean).
     public var controlPanelShowBitrate: Bool = true
-    /// Show or hide the control panel's resolution selector for streams (Boolean)
+    /// Show or hide the control panel's resolution selector for streams (Boolean).
     public var controlPanelShowResolutionOptions: Bool = true
     /// Tint for the scrubber (String): RGB or RGBA color in hexadecimal in the #RRGGBB or #RRGGBBAA format.
     public var controlPanelScrubberTint: Color = .orange.opacity(0.7)
     /// Radius of the video screen's sphere in meters (Number): make sure it's large enough to fit the control panel.
     public var videoScreenSphereRadius: Float = 1000.0
+    /// Whether to show or hide the Tap Catcher in red (Boolean).
+    public var tapCatcherShowDebug: Bool = false
     
     /// Shared config object with values that can be overridden by the app.
     @MainActor
@@ -54,6 +58,10 @@ public class Config {
             controlPanelTilt = controlPanelTiltValue
         }
         
+        if let controlPanelMediaInfoMaxHeightValue = config["controlPanelMediaInfoMaxHeight"] as? Float {
+            controlPanelMediaInfoMaxHeight = controlPanelMediaInfoMaxHeightValue
+        }
+        
         if let controlPanelShowBitrateValue = config["controlPanelShowBitrate"] as? Bool {
             controlPanelShowBitrate = controlPanelShowBitrateValue
         }
@@ -69,6 +77,10 @@ public class Config {
         
         if let videoScreenSphereRadiusValue = config["videoScreenSphereRadius"] as? Float {
             videoScreenSphereRadius = videoScreenSphereRadiusValue
+        }
+        
+        if let tapCatcherShowDebugValue = config["tapCatcherShowDebug"] as? Bool {
+            tapCatcherShowDebug = tapCatcherShowDebugValue
         }
         
         print("OpenImmersive loaded with custom configuration")

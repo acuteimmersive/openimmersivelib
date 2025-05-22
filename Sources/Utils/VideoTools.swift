@@ -116,7 +116,7 @@ public struct VideoTools {
     ///     - hFov: the horizontal field of view in degrees (default 180.0).
     ///     - vFov: the vertical field of view in degrees (default 180.0).
     /// - Returns: A tuple containing the `MeshResource` and `Transform` for the video.
-    public static func makeVideoMesh(hFov: Float = 180.0, vFov: Float = 180.0) async -> (mesh: MeshResource, transform: Transform) {
+    public static func makeVideoMesh(hFov: Float = 180.0, vFov: Float = 180.0) -> (mesh: MeshResource, transform: Transform) {
         let config = Config.shared
         let horizontalFov = min(360.0, max(0.0, hFov))
         let verticalFov = min(180.0, max(0.0, vFov))

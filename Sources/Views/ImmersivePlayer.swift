@@ -24,7 +24,13 @@ public struct ImmersivePlayer: View {
     let selectedStream: StreamModel
     
     /// The callback to execute when the user closes the immersive player.
-    let closeAction: (() -> Void)?
+    let closeAction: CustomAction?
+    
+    /// A list of custom attachments provided by the developer.
+    let customAttachments: [CustomAttachment]
+    
+    /// A custom button provided by the developer.
+    let customButtons: CustomViewBuilder?
     
     /// The pose tracker ensuring the position of the control panel attachment is fixed relatively to the viewer.
     private let headTracker = HeadTracker()
@@ -32,11 +38,15 @@ public struct ImmersivePlayer: View {
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - selectedStream: the stream for which the player will be open.
-    ///   - closeAction: the callback to execute when the user closes the immersive player.
-    ///   - playbackEndedAction: the callback to execute when playback reaches the end of the video.
-    public init(selectedStream: StreamModel, closeAction: (() -> Void)? = nil, playbackEndedAction: (() -> Void)? = nil) {
+    ///   - closeAction: the optional callback to execute when the user closes the immersive player.
+    ///   - playbackEndedAction: the optional callback to execute when playback reaches the end of the video.
+    ///   - customButtons: an optional view builder for custom buttons to add to the control panel.
+    ///   - customAttachments: an optional list of view builders for custom attachments to add to the immersive player.
+    public init(selectedStream: StreamModel, closeAction: CustomAction? = nil, playbackEndedAction: CustomAction? = nil, customButtons: CustomViewBuilder? = nil, customAttachments: [CustomAttachment] = []) {
         self.selectedStream = selectedStream
         self.closeAction = closeAction
+        self.customButtons = customButtons
+        self.customAttachments = customAttachments
         self.videoPlayer.playbackEndedAction = playbackEndedAction
     }
     
@@ -64,6 +74,19 @@ public struct ImmersivePlayer: View {
                 controlPanel.position = [0, config.controlPanelVerticalOffset, -config.controlPanelHorizontalOffset]
                 controlPanel.orientation = simd_quatf(angle: -config.controlPanelTilt * .pi/180, axis: [1, 0, 0])
                 root.addChild(controlPanel)
+                
+                for attachment in customAttachments {
+                    if let customView = attachments.entity(for: attachment.id) {
+                        customView.name = attachment.id
+                        customView.position = attachment.position
+                        customView.orientation = attachment.orientation
+                        if attachment.relativeToControlPanel {
+                            customView.position += controlPanel.position
+                            customView.orientation *= controlPanel.orientation
+                        }
+                        root.addChild(customView)
+                    }
+                }
             }
             
             // Show a spinny animation when the video is buffering
@@ -84,12 +107,19 @@ public struct ImmersivePlayer: View {
             ProgressView()
         } attachments: {
             Attachment(id: "ControlPanel") {
-                ControlPanel(videoPlayer: $videoPlayer, closeAction: closeAction)
+                ControlPanel(videoPlayer: $videoPlayer, closeAction: closeAction, customButtons: customButtons)
                     .animation(.easeInOut(duration: 0.3), value: videoPlayer.shouldShowControlPanel)
             }
             
             Attachment(id: "ProgressView") {
                 ProgressView()
+            }
+            
+            ForEach(customAttachments) { attachment in
+                Attachment(id: attachment.id) {
+                    AnyView(attachment.body($videoPlayer))
+                        .animation(.easeInOut(duration: 0.3))
+                }
             }
         }
         .onAppear {
@@ -97,7 +127,7 @@ public struct ImmersivePlayer: View {
             videoPlayer.showControlPanel()
             videoPlayer.play()
             
-            videoScreen.update(source: videoPlayer)
+            videoScreen.update(source: videoPlayer, projection: selectedStream.projection)
         }
         .onDisappear {
             videoPlayer.stop()
@@ -127,15 +157,13 @@ public struct ImmersivePlayer: View {
     
     /// Programmatically generates a tap catching entity in the shape of a large invisible box in front of the viewer.
     /// Taps captured by this invisible shape will toggle the control panel on and off.
-    /// - Parameters:
-    ///   - debug: if `true`, will make the box red for debug purposes (default false).
     /// - Returns: a new tap catcher entity.
-    private func makeTapCatcher(debug: Bool = false) -> some Entity {
+    private func makeTapCatcher() -> some Entity {
         let collisionShape: ShapeResource =
             .generateBox(width: 100, height: 100, depth: 1)
             .offsetBy(translation: [0.0, 0.0, -5.0])
         
-        let entity = debug ?
+        let entity = Config.shared.tapCatcherShowDebug ?
         ModelEntity(
             mesh: MeshResource(shape: collisionShape),
             materials: [UnlitMaterial(color: .red)]

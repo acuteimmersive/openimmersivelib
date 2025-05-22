@@ -19,12 +19,12 @@ public struct StreamUrlInput: View {
     @State private var isUrlValid: Bool = false
     
     /// The callback to execute after a valid stream URL has been submitted.
-    var loadStreamAction: (StreamModel) -> Void
+    var loadStreamAction: StreamAction
     
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - loadStreamAction: the callback to execute after a file has been picked.
-    public init(loadStreamAction: @escaping (StreamModel) -> Void) {
+    public init(loadStreamAction: @escaping StreamAction) {
         self.loadStreamAction = loadStreamAction
     }
     

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A button revealing a file importer configured to only allow the selection of videos.
 public struct FilePicker: View {
@@ -13,12 +14,12 @@ public struct FilePicker: View {
     @State private var isFileImporterShowing = false
     
     /// The callback to execute after a file has been picked.
-    var loadStreamAction: (StreamModel) -> Void
+    var loadStreamAction: StreamAction
     
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - loadStreamAction: the callback to execute after a file has been picked.
-    public init(loadStreamAction: @escaping (StreamModel) -> Void) {
+    public init(loadStreamAction: @escaping StreamAction) {
         self.loadStreamAction = loadStreamAction
     }
     
@@ -28,7 +29,7 @@ public struct FilePicker: View {
         }
         .fileImporter(
             isPresented: $isFileImporterShowing,
-            allowedContentTypes: [.audiovisualContent]
+            allowedContentTypes: [.audiovisualContent, UTType(filenameExtension: "aivu")!]
         ) { result in
             switch result {
             case .success(let url):
