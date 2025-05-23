@@ -262,6 +262,22 @@ public class VideoPlayer: Sendable {
         paused = true
         restartControlPanelTask()
     }
+
+    /// Jump to a specific time in media playback.
+    /// - Parameters:
+    ///   - newTime: the playback time to jump to.
+    public func seek(to newTime: CMTime) {
+        hasReachedEnd = false
+        player.seek(to: newTime)
+        restartControlPanelTask()
+    }
+    
+    /// Jump to a specific time in media playback.
+    /// - Parameters:
+    ///   - newTime: the playback time to jump to, in seconds from the start.
+    public func seek(to newTime: Double) {
+        seek(to: CMTime(seconds: newTime, preferredTimescale: 1000))
+    }
     
     /// Jump back 15 seconds in media playback.
     public func minus15() {
@@ -269,9 +285,7 @@ public class VideoPlayer: Sendable {
             return
         }
         let newTime = time - CMTime(seconds: 15.0, preferredTimescale: 1000)
-        hasReachedEnd = false
-        player.seek(to: newTime)
-        restartControlPanelTask()
+        seek(to: newTime)
     }
     
     /// Jump forward 15 seconds in media playback.
@@ -280,9 +294,7 @@ public class VideoPlayer: Sendable {
             return
         }
         let newTime = time + CMTime(seconds: 15.0, preferredTimescale: 1000)
-        hasReachedEnd = false
-        player.seek(to: newTime)
-        restartControlPanelTask()
+        seek(to: newTime)
     }
     
     /// Stop media playback and unload the current media.
