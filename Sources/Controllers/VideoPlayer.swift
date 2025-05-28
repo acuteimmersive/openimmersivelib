@@ -265,18 +265,35 @@ public class VideoPlayer: Sendable {
 
     /// Jump to a specific time in media playback.
     /// - Parameters:
-    ///   - newTime: the playback time to jump to.
-    public func seek(to newTime: CMTime) {
+    ///   - time: the playback time to jump to.
+    ///   - toleranceBefore: an optional tolerance before the target time to allow.
+    ///   - toleranceAfter: an optional tolerance after the target time to allow.
+    ///
+    /// See AVPlayer.seek() for details on the behavior of the tolerance parameters.
+    public func seek(to time: CMTime,
+                     toleranceBefore: CMTime = CMTime.positiveInfinity,
+                     toleranceAfter: CMTime = CMTime.positiveInfinity) {
         hasReachedEnd = false
-        player.seek(to: newTime)
+        player.seek(to: time, toleranceBefore: toleranceBefore, toleranceAfter: toleranceAfter)
         restartControlPanelTask()
     }
     
     /// Jump to a specific time in media playback.
     /// - Parameters:
+    ///   - time: the playback time to jump to, in seconds from the start.
+    public func seek(to time: Double) {
+        seek(to: CMTime(seconds: time, preferredTimescale: 1000))
+    }
+    
+    /// Jump to a specific time in media playback.
+    /// - Parameters:
     ///   - newTime: the playback time to jump to, in seconds from the start.
-    public func seek(to newTime: Double) {
-        seek(to: CMTime(seconds: newTime, preferredTimescale: 1000))
+    ///   - tolerance: the tolerance before and after the target time to allow, in seconds.
+    ///
+    /// A smaller tolerance may incur additional decoding delay which can impact seeking performance.
+    public func seek(to time: Double, tolerance: Double) {
+        let tolerance = CMTime(seconds: tolerance, preferredTimescale: 1000)
+        seek(to: CMTime(seconds: time, preferredTimescale: 1000), toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
     
     /// Jump back 15 seconds in media playback.
