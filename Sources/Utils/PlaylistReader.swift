@@ -35,6 +35,8 @@ public actor PlaylistReader {
     /// Resolution options parsed from the playlist resource at `url`.
     @MainActor
     private(set) public var resolutions: [ResolutionOption] = []
+    /// If the playlist is AIV or not. Set to false by default.
+    public var isAiv: Bool = false
     /// Error that caused `state` to be set to `.error`. Will be `nil` if `state` is not `.error`.
     @MainActor
     public var error: Error? {
@@ -90,10 +92,12 @@ public actor PlaylistReader {
     ///   expected to be contents of a m3u8 HLS media playlist file.
     ///
     ///   Throws an error if the data is not text, or if no resolutions are found.
-    private func parseData(_ data: Data) throws {
+    private func parseData(_ data: Data) async throws {
         guard let text = String(data: data, encoding: .utf8) else {
             throw PlaylistReaderError.ParsingError
         }
+        
+        let isAiv: Bool = detectAIV(from: text)
         
         let resolutions = parseResolutions(from: text)
         
@@ -101,10 +105,29 @@ public actor PlaylistReader {
             throw PlaylistReaderError.NoAvailableResolutionError
         }
         
+        self.isAiv = isAiv
+        
         Task {
             await setResolutions(resolutions)
         }
     }
+    
+    
+    
+    /// Parses a HLS playlist to discover if it is an AIV stream
+    /// - Parameters:
+    ///   - text: text to be parsed, expected to be the contents of a m3u8 HLS media playlist file.
+    ///
+    /// - Returns: A bool of true or false stating if it is an AIV playlist or not
+    private func detectAIV(from text: String) -> Bool {
+        // Can be expanded as the format changes/grows
+        if(text.contains("com.apple.hls.venue-description")){
+            print("Has the venu descriptor")
+            return true
+        }
+        return false
+    }
+    
     
     /// Parses a list of Resolution Options from
     /// - Parameters:
