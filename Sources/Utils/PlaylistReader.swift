@@ -113,15 +113,19 @@ public actor PlaylistReader {
     private func parseResolutions(from text: String) -> [ResolutionOption] {
         var resolutions: [ResolutionOption] = []
         let resolutionSearch = /RESOLUTION=(?<width>\d+)x(?<height>\d+),/
-        let bandwidthSearch = /BANDWIDTH=(?<bitrate>\d+),/
+        let averageBandwidthSearch = /AVERAGE-BANDWIDTH=(?<averageBandwidth>\d+),/
+        let bandwidthSearch = /BANDWIDTH=(?<bandwidth>\d+),/
         
         let lines = text.components(separatedBy: .newlines)
         for (index, line) in lines.enumerated() {
+            let averageBandwidth = (try? averageBandwidthSearch.firstMatch(in: line))?.averageBandwidth ?? "0"
+            let peakBandwidth = (try? bandwidthSearch.firstMatch(in: line)?.bandwidth) ?? "0"
             if let resolution = try? resolutionSearch.firstMatch(in: line),
-               let bandwidth = try? bandwidthSearch.firstMatch(in: line),
                let width = Int(resolution.width),
                let height = Int(resolution.height),
-               let bitrate = Int(bandwidth.bitrate),
+               let averageBitrate = Int(averageBandwidth),
+               let peakBitrate = Int(peakBandwidth),
+               averageBitrate > 0 || peakBitrate > 0,
                index + 1 < lines.count {
                 let url = {
                     // testing for host() ensures that the URL is absolute
@@ -136,7 +140,8 @@ public actor PlaylistReader {
                 
                 let option = ResolutionOption(
                     size: CGSize(width: width, height: height),
-                    bitrate: bitrate,
+                    averageBitrate: averageBitrate,
+                    peakBitrate: peakBitrate,
                     url: url
                 )
                 resolutions.append(option)

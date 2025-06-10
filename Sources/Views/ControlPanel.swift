@@ -172,7 +172,7 @@ public struct BitrateReadout: View {
 
     /// Evaluates the font color for the bitrate label depending on bitrate value.
     /// - Parameters:
-    ///   - bitrate: the bitrate value as an `Double`
+    ///   - bitrate: the bitrate value as a `Double`
     ///   - ladder: the resolution options for the stream
     ///   - tolerance: the tolerance for color threshold (default 1.2Mbps)
     /// - Returns: White if top bitrate for the stream, yellow if second best, orange if third best, red otherwise.

@@ -186,10 +186,8 @@ public class VideoPlayer: Sendable {
                 Task { @MainActor in
                     if case .success = reader.state,
                        reader.resolutions.count > 0 {
-                        self.resolutionOptions = reader.resolutions.sorted(by: { lhs, rhs in
-                            lhs.bitrate < rhs.bitrate
-                        })
-                        let defaultResolution = reader.resolutions.first!.size
+                        self.resolutionOptions = reader.resolutions.sorted()
+                        let defaultResolution = reader.resolutions.last!.size
                         self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
                     }
                 }
@@ -348,7 +346,12 @@ public class VideoPlayer: Sendable {
             ) { [weak self] time in
                 Task { @MainActor in
                     if let self {
-                        if let event = self.player.currentItem?.accessLog()?.events.last {
+                        let event = self.player.currentItem?.accessLog()?.events.last
+                        // Average bitrate is supposed to be the most representative value
+                        // but some HLS manifests only advertise bitrate.
+                        if let event, event.indicatedAverageBitrate > 0 {
+                            self.bitrate = event.indicatedAverageBitrate
+                        } else if let event, event.indicatedBitrate > 0 {
                             self.bitrate = event.indicatedBitrate
                         } else {
                             self.bitrate = 0
