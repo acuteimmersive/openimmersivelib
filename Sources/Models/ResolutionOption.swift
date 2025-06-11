@@ -88,11 +88,11 @@ extension ResolutionOption: Hashable {
 
 extension ResolutionOption: Equatable {
     public static func == (lhs: ResolutionOption, rhs: ResolutionOption) -> Bool {
-        return lhs.id == rhs.id &&
-               lhs.size == rhs.size &&
-               lhs.averageBitrate == rhs.averageBitrate &&
-               lhs.peakBitrate == rhs.peakBitrate &&
-               lhs.url == rhs.url
+        lhs.id == rhs.id &&
+        lhs.size == rhs.size &&
+        lhs.averageBitrate == rhs.averageBitrate &&
+        lhs.peakBitrate == rhs.peakBitrate &&
+        lhs.url == rhs.url
     }
 }
 

@@ -22,6 +22,8 @@ public class Config {
     public var controlPanelShowBitrate: Bool = true
     /// Show or hide the control panel's resolution selector for streams (Boolean).
     public var controlPanelShowResolutionOptions: Bool = true
+    /// Show or hide the control panel's audio selector for streams (Boolean).
+    public var controlPanelShowAudioOptions: Bool = true
     /// Tint for the scrubber (String): RGB or RGBA color in hexadecimal in the #RRGGBB or #RRGGBBAA format.
     public var controlPanelScrubberTint: Color = .orange.opacity(0.7)
     /// Radius of the video screen's sphere in meters (Number): make sure it's large enough to fit the control panel.
@@ -68,6 +70,10 @@ public class Config {
         
         if let controlPanelShowResolutionOptionsValue = config["controlPanelShowResolutionOptions"] as? Bool {
             controlPanelShowResolutionOptions = controlPanelShowResolutionOptionsValue
+        }
+        
+        if let controlPanelShowAudioOptionsValue = config["controlPanelShowAudioOptions"] as? Bool {
+            controlPanelShowAudioOptions = controlPanelShowAudioOptionsValue
         }
         
         if let controlPanelScrubberTintValue = config["controlPanelScrubberTint"] as? String,

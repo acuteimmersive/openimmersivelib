@@ -50,10 +50,22 @@ public class VideoPlayer: Sendable {
     private(set) public var resolutionOptions: [ResolutionOption] = []
     /// The currently selected resolution option index, if any. Only available if streaming from a HLS server (m3u8).
     private(set) public var selectedResolutionIndex: Int = -1
+    /// Audio options available for the video stream, only available if streaming from a HLS server (m3u8) and with separate audio playlists.
+    private(set) public var audioOptions: [AudioOption] = []
+    /// The currently selected resolution option index, if any. Only available if streaming from a HLS server (m3u8).
+    private(set) public var selectedAudioIndex: Int = -1
     /// `true` if the control panel should be visible to the user.
     private(set) public var shouldShowControlPanel: Bool = true
-    /// `true` if the control panel should present resolution options to the user.
-    private(set) public var shouldShowResolutionOptions: Bool = false
+    /// `true` if the control panel should present resolution & audio options to the user.
+    private(set) public var shouldShowPlaybackOptions: Bool = false
+    /// `true` if the stream has at least 2 resolution options and the custom configuration doesn't prevent user selection.
+    public var canChooseResolution: Bool {
+        resolutionOptions.count > 1 && Config.shared.controlPanelShowResolutionOptions
+    }
+    /// `true` if the stream has at least 2 audio options and the custom configuration doesn't prevent user selection.
+    public var canChooseAudio: Bool {
+        audioOptions.count > 1 && Config.shared.controlPanelShowAudioOptions
+    }
     
     /// The current time in seconds of the current video (0 if none).
     ///
@@ -110,6 +122,7 @@ public class VideoPlayer: Sendable {
     
     /// Instruct the UI to reveal the control panel.
     public func showControlPanel() {
+        shouldShowPlaybackOptions = false
         withAnimation {
             shouldShowControlPanel = true
         }
@@ -119,7 +132,7 @@ public class VideoPlayer: Sendable {
     /// Instruct the UI to hide the control panel.
     public func hideControlPanel() {
         withAnimation {
-            shouldShowResolutionOptions = false
+            shouldShowPlaybackOptions = false
             shouldShowControlPanel = false
         }
     }
@@ -133,13 +146,13 @@ public class VideoPlayer: Sendable {
         }
     }
     
-    /// Instruct the UI to toggle the visibility of resolutions options.
+    /// Instruct the UI to toggle the visibility of resolutions and audio options.
     ///
-    /// This will only do something if resolution options are available.
-    public func toggleResolutionOptions() {
-        if resolutionOptions.count > 1 {
+    /// This will only do something if resolution or audio options are available.
+    public func togglePlaybackOptions() {
+        if resolutionOptions.count > 1 || audioOptions.count > 1 {
             withAnimation {
-                shouldShowResolutionOptions.toggle()
+                shouldShowPlaybackOptions.toggle()
             }
             restartControlPanelTask()
         }
@@ -184,14 +197,20 @@ public class VideoPlayer: Sendable {
         playlistReader = nil
         resolutionOptions = []
         selectedResolutionIndex = -1
+        selectedAudioIndex = -1
         if stream.url.host() != nil {
             playlistReader = PlaylistReader(url: stream.url) { reader in
                 Task { @MainActor in
-                    if case .success = reader.state,
-                       reader.resolutions.count > 0 {
-                        self.resolutionOptions = reader.resolutions.sorted()
-                        let defaultResolution = reader.resolutions.last!.size
-                        self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
+                    if case .success = reader.state {
+                        if reader.resolutions.count > 0 {
+                            self.resolutionOptions = reader.resolutions
+                            let defaultResolution = reader.resolutions.last!.size
+                            self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
+                        }
+                        
+                        if reader.audios.count > 0 {
+                            self.audioOptions = reader.audios
+                        }
                     }
                 }
             }
@@ -208,7 +227,7 @@ public class VideoPlayer: Sendable {
         }
         
         withAnimation {
-            shouldShowResolutionOptions = false
+            shouldShowPlaybackOptions = false
         }
         
         guard asset.url != url else {
@@ -228,7 +247,7 @@ public class VideoPlayer: Sendable {
         }
     }
     
-    /// Load the resolution option for the given index, and open the corresponding url if successful.
+    /// Load the resolution option for the given index, and play the corresponding video variant url if successful.
     /// - Parameters:
     ///   - index: the index of the resolution option, -1 for adaptive bitrate (default)
     public func openResolutionOption(index: Int = -1) {
@@ -245,6 +264,20 @@ public class VideoPlayer: Sendable {
         } else {
             openStreamVariant(resolutionOptions[index].url)
         }
+    }
+    
+    /// Load the audio option for the given index, and play the corresponding audio variant url if successful.
+    /// - Parameters:
+    ///   - index: the index of the audio option, -1 for default.
+    public func openAudioOption(index: Int = -1) {
+        guard let playlistReader,
+              index < audioOptions.count
+        else {
+            return
+        }
+        
+        selectedAudioIndex = index
+        // do nothing for now
     }
     
     /// Play or unpause media playback.
