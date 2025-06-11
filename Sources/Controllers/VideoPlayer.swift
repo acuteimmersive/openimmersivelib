@@ -48,6 +48,8 @@ public class VideoPlayer: Sendable {
     private(set) public var bitrate: Double = 0
     /// Resolution options available for the video stream, only available if streaming from a HLS server (m3u8).
     private(set) public var resolutionOptions: [ResolutionOption] = []
+    /// The currently selected resolution option index, if any. Only available if streaming from a HLS server (m3u8).
+    private(set) public var selectedResolutionIndex: Int = -1
     /// `true` if the control panel should be visible to the user.
     private(set) public var shouldShowControlPanel: Bool = true
     /// `true` if the control panel should present resolution options to the user.
@@ -181,6 +183,7 @@ public class VideoPlayer: Sendable {
         // if streaming from HLS, attempt to retrieve the resolution options
         playlistReader = nil
         resolutionOptions = []
+        selectedResolutionIndex = -1
         if stream.url.host() != nil {
             playlistReader = PlaylistReader(url: stream.url) { reader in
                 Task { @MainActor in
@@ -236,9 +239,12 @@ public class VideoPlayer: Sendable {
         }
         
         // index -1 is automatic, that is to say the original URL parsed by the playlist reader
-        let selectedUrl = index < 0 ? playlistReader.url : resolutionOptions[index].url
-        
-        openStreamVariant(selectedUrl)
+        selectedResolutionIndex = index
+        if index < 0 {
+            openStreamVariant(playlistReader.url)
+        } else {
+            openStreamVariant(resolutionOptions[index].url)
+        }
     }
     
     /// Play or unpause media playback.

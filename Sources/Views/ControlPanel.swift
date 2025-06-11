@@ -333,25 +333,30 @@ public struct ResolutionSelector: View {
     public var body: some View {
         let options = videoPlayer.resolutionOptions
         let zippedOptions = Array(zip(options.indices, options))
+        let isOn: (Int) -> Binding<Bool> = { index in
+            Binding {
+                videoPlayer.selectedResolutionIndex == index
+            } set: { _ in
+                videoPlayer.openResolutionOption(index: index)
+            }
+        }
         
         HStack {
-            Button {
-                videoPlayer.openResolutionOption(index: -1)
-            } label: {
+            Toggle(isOn: isOn(-1)) {
                 Text("Auto")
                     .font(.headline)
             }
+            .toggleStyle(.button)
             
             ForEach(zippedOptions, id: \.0) { index, option in
-                Button {
-                    videoPlayer.openResolutionOption(index: index)
-                } label: {
+                Toggle(isOn: isOn(index)) {
                     Text(option.resolutionString)
                         .font(.subheadline)
                     Text(option.bitrateString)
                         .font(.caption)
                         .opacity(0.8)
                 }
+                .toggleStyle(.button)
             }
         }
     }
