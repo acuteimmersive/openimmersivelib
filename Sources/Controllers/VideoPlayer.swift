@@ -7,7 +7,7 @@
 
 import SwiftUI
 import AVFoundation
-import RealityFoundation
+import RealityKit
 
 /// Video Player Controller interfacing the underlying `AVPlayer`, exposing states and controls to the UI.
 // @MainActor ensures properties are published on the main thread

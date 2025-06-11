@@ -150,8 +150,8 @@ public struct VideoTools {
             print("Could not extract video dimensions: No video track found")
             return nil
         }
-        
-        guard let (naturalSize, formatDescriptions) = try? await videoTrack.load(.naturalSize, .formatDescriptions)
+        guard let naturalSize = try? await videoTrack.load(.naturalSize),
+              let formatDescriptions = try? await videoTrack.load(.formatDescriptions)
         else {
             print("Could not extract video dimensions: Failed to load video properties")
             return nil
