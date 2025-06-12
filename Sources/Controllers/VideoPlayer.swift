@@ -111,6 +111,7 @@ public class VideoPlayer: Sendable {
     private var bufferingObserver: NSKeyValueObservation?
     private var dismissControlPanelTask: Task<Void, Never>?
     private var playlistReader: PlaylistReader?
+    private var playlistWriter: PlaylistWriter?
     
     //MARK: Immutable variables
     /// The video player
@@ -199,25 +200,41 @@ public class VideoPlayer: Sendable {
         selectedResolutionIndex = -1
         selectedAudioIndex = -1
         if stream.url.host() != nil {
-            playlistReader = PlaylistReader(url: stream.url) { reader in
-                Task { @MainActor in
-                    if case .success = reader.state {
-                        if reader.resolutions.count > 0 {
-                            self.resolutionOptions = reader.resolutions
-                            let defaultResolution = reader.resolutions.last!.size
-                            self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
-                        }
-                        
-                        if reader.audios.count > 0 {
-                            self.audioOptions = reader.audios
-                        }
+            playlistReader = PlaylistReader(url: stream.url) { @MainActor reader in
+                if case .success = reader.state {
+                    if reader.resolutions.count > 0 {
+                        self.resolutionOptions = reader.resolutions
+                        let defaultResolution = reader.resolutions.last!.size
+                        self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
                     }
+                    
+                    if reader.audios.count > 0 {
+                        self.audioOptions = reader.audios
+                    }
+                    
+                    self.playlistWriter = PlaylistWriter(from: reader.rawText, baseURL: stream.url)
                 }
             }
         }
     }
     
-    /// Load the corresponding stream variant from a resolution option, preserving other states.
+    /// Load a stream variant for the currently selected resolution and audio options, preserving other states.
+    private func openStreamVariant() {
+        guard let playlistReader else {
+            return
+        }
+        
+        // index -1 is automatic, that is to say the original URL parsed by the playlist reader
+        if selectedResolutionIndex < 0, selectedAudioIndex < 0 {
+            openStreamVariant(playlistReader.url)
+        } else {
+            makeStreamVariant() { @MainActor url in
+                self.openStreamVariant(url)
+            }
+        }
+    }
+    
+    /// Load the corresponding stream variant from a given url, preserving other states.
     /// - Parameters:
     ///   - url: the url to the stream variant.
     private func openStreamVariant(_ url: URL) {
@@ -247,37 +264,57 @@ public class VideoPlayer: Sendable {
         }
     }
     
+    /// Generate a playlist file for the currently selected resolution and audio options
+    /// - Parameters:
+    ///   - completionAction: the callback to execute after writing the playlist file succeeds.
+    private func makeStreamVariant(completionAction: (@MainActor (URL) -> Void)?) {
+        guard let playlistWriter else {
+            return
+        }
+        
+        let resolutionOption = selectedResolutionIndex < 0 ? nil : resolutionOptions[selectedResolutionIndex]
+        let audioOption = selectedAudioIndex < 0 ? nil : audioOptions[selectedAudioIndex]
+        
+        Task {
+            do {
+                try await playlistWriter.writeVariant(
+                    withResolution: resolutionOption,
+                    withAudio: audioOption,
+                    completionAction: completionAction
+                )
+            }
+            catch {
+                print("Error writing custom stream variant: \(error)")
+            }
+        }
+    }
+    
     /// Load the resolution option for the given index, and play the corresponding video variant url if successful.
     /// - Parameters:
     ///   - index: the index of the resolution option, -1 for adaptive bitrate (default)
     public func openResolutionOption(index: Int = -1) {
-        guard let playlistReader,
-              index < resolutionOptions.count
+        guard index < resolutionOptions.count,
+              index != selectedResolutionIndex
         else {
             return
         }
         
-        // index -1 is automatic, that is to say the original URL parsed by the playlist reader
         selectedResolutionIndex = index
-        if index < 0 {
-            openStreamVariant(playlistReader.url)
-        } else {
-            openStreamVariant(resolutionOptions[index].url)
-        }
+        openStreamVariant()
     }
     
     /// Load the audio option for the given index, and play the corresponding audio variant url if successful.
     /// - Parameters:
     ///   - index: the index of the audio option, -1 for default.
     public func openAudioOption(index: Int = -1) {
-        guard let playlistReader,
-              index < audioOptions.count
+        guard index < audioOptions.count,
+              index != selectedAudioIndex
         else {
             return
         }
         
         selectedAudioIndex = index
-        // do nothing for now
+        openStreamVariant()
     }
     
     /// Play or unpause media playback.

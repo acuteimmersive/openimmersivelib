@@ -58,7 +58,7 @@ public actor PlaylistReader {
     ///   - completionAction: the callback to execute after parsing the playlist file succeeds or fails.
     public init(
         url: URL,
-        completionAction: (@Sendable (PlaylistReader) -> Void)?
+        completionAction: (@MainActor (PlaylistReader) -> Void)?
     ) {
         self.url = url
         
@@ -76,7 +76,9 @@ public actor PlaylistReader {
                 }
             }
             
-            completionAction?(self)
+            Task { @MainActor in
+                completionAction?(self)
+            }
         }
     }
     
@@ -99,20 +101,6 @@ public actor PlaylistReader {
         
         // Run the tasks in parallel
         await (parseResolutions, parseAudioOptions, setRawText)
-    }
-    
-    /// Assembles an absolute URL to a resource from a string that may be a relative or absolute URL.
-    /// - Parameters:
-    ///   - string: the input string, which is assumed to be an absolute URL or a relative path.
-    /// - Returns: a URL object that's always absolute.
-    private func absoluteURL(from string: String) -> URL {
-        // testing for host() ensures that the URL is absolute
-        if let url = URL(string: string), url.host() != nil {
-            url
-        } else {
-            // the URL is a relative path
-            URL(filePath: string, relativeTo: self.url)
-        }
     }
     
     /// Parses a list of Resolution Options from the playlist.
@@ -143,7 +131,7 @@ public actor PlaylistReader {
                 size: CGSize(width: width, height: height),
                 averageBitrate: averageBitrate,
                 peakBitrate: peakBitrate,
-                url: absoluteURL(from: lines[index + 1])
+                url: absoluteURL(from: lines[index + 1], relativeTo: url)
             )
         
             resolutionOptions.append(option)
@@ -184,7 +172,7 @@ public actor PlaylistReader {
             }
             
             let option = AudioOption(
-                url: absoluteURL(from: String(uri.url)),
+                url: absoluteURL(from: String(uri.url), relativeTo: url),
                 groupId: String(groupId.groupId),
                 name: name,
                 language: language
