@@ -22,11 +22,15 @@ public class VideoPlayer: Sendable {
     private(set) public var details: String = ""
     /// The url of the current video.
     private(set) public var url: URL?
+    /// A playback error, if any.
+    private(set) public var error: Error?
     /// The duration in seconds of the current video (0 if none).
     private(set) public var duration: Double = 0
     /// `true` if playback is currently paused, or if playback has completed.
     private(set) public var paused: Bool = false
-    /// `true` if playback is temporarily interrupted due to buffering.
+    /// `true` if playback is waiting to load the media.
+    private(set) public var loading: Bool = false
+    /// `true` if playback is temporarily interrupted due to buffering (HLS only).
     private(set) public var buffering: Bool = false
     /// `true` if playback reached the end of the video and is no longer playing.
     private(set) public var hasReachedEnd: Bool = false
@@ -108,6 +112,7 @@ public class VideoPlayer: Sendable {
     //MARK: Private variables
     private var timeObserver: Any?
     private var durationObserver: NSKeyValueObservation?
+    private var mediaStatusObserver: NSKeyValueObservation?
     private var bufferingObserver: NSKeyValueObservation?
     private var dismissControlPanelTask: Task<Void, Never>?
     private var playlistReader: PlaylistReader?
@@ -238,7 +243,7 @@ public class VideoPlayer: Sendable {
     /// - Parameters:
     ///   - url: the url to the stream variant.
     private func openStreamVariant(_ url: URL) {
-        guard let asset = player.currentItem?.asset as? AVURLAsset else {
+        guard let currentAsset = player.currentItem?.asset as? AVURLAsset else {
             // nothing is currently playing
             return
         }
@@ -247,14 +252,18 @@ public class VideoPlayer: Sendable {
             shouldShowPlaybackOptions = false
         }
         
-        guard asset.url != url else {
+        guard currentAsset.url != url else {
             // already playing the correct url
             return
         }
         
         // temporarily stop the observers to stop them from interfering in the state changes
         tearDownObservers()
-        let playerItem = AVPlayerItem(url: url)
+        
+        let restrictions = AVAssetReferenceRestrictions.forbidRemoteReferenceToLocal
+        let options = [AVURLAssetReferenceRestrictionsKey: NSNumber(value: restrictions.rawValue)]
+        let asset = AVURLAsset(url: url, options: options)
+        let playerItem = AVPlayerItem(asset: asset)
         player.replaceCurrentItem(with: playerItem)
         // "simulating" a scrub end will seek the current time to the right spot
         scrubState = .scrubEnded
@@ -284,7 +293,7 @@ public class VideoPlayer: Sendable {
                 )
             }
             catch {
-                print("Error writing custom stream variant: \(error)")
+                print("Error writing custom stream variant: \(error.localizedDescription)")
             }
         }
     }
@@ -459,6 +468,23 @@ public class VideoPlayer: Sendable {
             }
         }
         
+        if mediaStatusObserver == nil, let currentItem = player.currentItem {
+            mediaStatusObserver = currentItem.observe(
+                \.status,
+                 options: [.new, .initial]
+            ) { [weak self] item, _ in
+                Task { @MainActor in
+                    self?.loading = item.status == .unknown
+                    if item.status == .failed, let error = item.error {
+                        print("Error: failed to load media: \(error.localizedDescription)")
+                        self?.error = error
+                    } else {
+                        self?.error = nil
+                    }
+                }
+            }
+        }
+        
         if bufferingObserver == nil {
             bufferingObserver = player.observe(
                 \.timeControlStatus,
@@ -491,6 +517,8 @@ public class VideoPlayer: Sendable {
         timeObserver = nil
         durationObserver?.invalidate()
         durationObserver = nil
+        mediaStatusObserver?.invalidate()
+        mediaStatusObserver = nil
         bufferingObserver?.invalidate()
         bufferingObserver = nil
         
@@ -506,7 +534,7 @@ public class VideoPlayer: Sendable {
         cancelControlPanelTask()
         dismissControlPanelTask = Task {
             try? await Task.sleep(for: .seconds(10))
-            let videoIsPlaying = !paused && !hasReachedEnd && !buffering
+            let videoIsPlaying = error == nil && !loading && !paused && !hasReachedEnd && !buffering
             if !Task.isCancelled, videoIsPlaying {
                 hideControlPanel()
             }

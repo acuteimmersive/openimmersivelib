@@ -58,8 +58,6 @@ public actor PlaylistWriter {
         
         let url = try writeTempFile(content: lines.joined(separator: "\n"), filename: filename)
         
-        print(lines.joined(separator: "\n"))
-        
         Task { @MainActor in
             completionAction?(url)
         }
