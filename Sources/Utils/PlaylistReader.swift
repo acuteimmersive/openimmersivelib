@@ -131,7 +131,7 @@ public actor PlaylistReader {
                 size: CGSize(width: width, height: height),
                 averageBitrate: averageBitrate,
                 peakBitrate: peakBitrate,
-                url: absoluteURL(from: lines[index + 1], relativeTo: url)
+                url: hlsURL(from: absoluteURL(from: lines[index + 1], relativeTo: url))
             )
         
             resolutionOptions.append(option)
@@ -172,7 +172,7 @@ public actor PlaylistReader {
             }
             
             let option = AudioOption(
-                url: absoluteURL(from: String(uri.url), relativeTo: url),
+                url: hlsURL(from: absoluteURL(from: String(uri.url), relativeTo: url)),
                 groupId: String(groupId.groupId),
                 name: name,
                 language: language

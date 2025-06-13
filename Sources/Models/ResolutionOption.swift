@@ -8,7 +8,7 @@
 import Foundation
 
 /// Simple structure describing a resolution option for an HLS video stream.
-public struct ResolutionOption: Codable {
+public struct ResolutionOption: Codable, Sendable {
     /// Pixel resolution of the video stream.
     public let size: CGSize
     /// Average bitrate of the video stream.

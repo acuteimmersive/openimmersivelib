@@ -7,7 +7,7 @@
 import Foundation
 
 /// Simple structure describing an audio option for an HLS video stream.
-public struct AudioOption: Codable {
+public struct AudioOption: Codable, Sendable {
     /// URL to a m3u8 HLS media playlist file.
     public let url: URL
     /// Group id for the audio

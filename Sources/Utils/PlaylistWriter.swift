@@ -11,8 +11,10 @@ import Foundation
 public actor PlaylistWriter {
     /// Errors specific to Playlist Writer
     public enum PlaylistWriterError: Error {
-        /// The URL could not be read as a UTF8 text file.
-        case WriteError(Error)
+        /// The playlist could not be written.
+        case WriteError
+        /// The playlist raw data could not be parsed into text.
+        case ParsingError
         /// The specified resolution could not be selected.
         case ResolutionFilterError
         /// The specified audio could not be selected.
@@ -20,17 +22,21 @@ public actor PlaylistWriter {
     }
     
     /// Text copy of the original playlist, assumed to be a valid HLS m3u8.
-    private(set) public var rawText: String = ""
+    public let rawText: String
     
     /// Base url of the original playlist.
-    private(set) public var baseURL: URL
+    public let baseURL: URL
     
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - rawText: the text copy of the original playlist.
     ///   - baseURL: the base url of the original playlist.
-    public init(from rawText: String, baseURL: URL) {
-        self.rawText = rawText
+    public init(from rawData: Data, baseURL: URL) throws {
+        guard let text = String(data: rawData, encoding: .utf8) else {
+            throw PlaylistWriterError.ParsingError
+        }
+        
+        self.rawText = text
         self.baseURL = baseURL
     }
     
@@ -38,13 +44,18 @@ public actor PlaylistWriter {
     /// - Parameters:
     ///   - resolutionOption: the optional resolution that should be the one to keep.
     ///   - audioOption: the optional audio that should be the one to keep.
-    ///   - completionAction: the callback to execute after writing the playlist file succeeds.
-    public func writeVariant(withResolution resolutionOption: ResolutionOption? = nil,
-                             withAudio audioOption: AudioOption? = nil,
-                             completionAction: (@MainActor (URL) -> Void)?) throws {
+    ///   - absoluteURLs: set to true to convert all URLs in the playlist to absolute URLs.
+    ///   - completionAction: the optional callback to execute after writing the playlist file succeeds.
+    /// - Returns: Data object with the filtered playlist.
+    public func makeVariant(withResolution resolutionOption: ResolutionOption? = nil,
+                            withAudio audioOption: AudioOption? = nil,
+                            absoluteURLs: Bool = false,
+                            completionAction: ((Data) -> Void)? = nil) throws -> Data {
         var lines = rawText.components(separatedBy: .newlines)
         
-        try makeURLsAbsolute(&lines)
+        if absoluteURLs {
+            try makeURLsAbsolute(&lines)
+        }
         
         if let resolutionOption {
             try filterResolution(&lines, resolutionOption)
@@ -54,31 +65,15 @@ public actor PlaylistWriter {
             try filterAudio(&lines, audioOption)
         }
         
-        let filename = "playlist__\(resolutionOption?.bitrateString ?? "nil")__\(audioOption?.groupId ?? " nil")__\(audioOption?.description ?? "nil").m3u8"
+        let filteredText = lines.joined(separator: "\n")
+        print("makeVariant:\n\(filteredText)\n")
+        guard let data = filteredText.data(using: .utf8) else {
+            throw PlaylistWriterError.WriteError
+        }
         
-        let url = try writeTempFile(content: lines.joined(separator: "\n"), filename: filename)
+        completionAction?(data)
         
-        Task { @MainActor in
-            completionAction?(url)
-        }
-    }
-    
-    /// Write a text file to the temporary directory of the file manager.
-    /// - Parameters:
-    ///   - content: the string to write to the file.
-    ///   - filename: the name of the file.
-    private func writeTempFile(content: String, filename: String) throws -> URL {
-        let fileManager = FileManager.default
-        let temporaryDirectoryURL = fileManager.temporaryDirectory
-        let fileURL = temporaryDirectoryURL.appendingPathComponent(filename)
-
-        do {
-            try content.write(to: fileURL, atomically: true, encoding: .utf8)
-        }
-        catch {
-            throw PlaylistWriterError.WriteError(error)
-        }
-        return fileURL
+        return data
     }
     
     /// Update all the URLs to ensure they are absolute URLs.

@@ -21,3 +21,35 @@ public func absoluteURL(from string: String, relativeTo baseURL: URL) -> URL {
         URL(filePath: string, relativeTo: baseURL)
     }
 }
+
+public func hlsURL(from url: URL) -> URL {
+    guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+        return url
+    }
+    
+    if components.scheme == "http" {
+        components.scheme = Config.shared.customHttpUrlScheme
+    } else if components.scheme == "https" {
+        components.scheme = Config.shared.customHttpsUrlScheme
+    } else {
+        return url
+    }
+    
+    return components.url!
+}
+
+public func httpURL(from url: URL) -> URL {
+    guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+        return url
+    }
+    
+    if components.scheme == Config.shared.customHttpUrlScheme {
+        components.scheme = "http"
+    } else if components.scheme == Config.shared.customHttpsUrlScheme {
+        components.scheme = "https"
+    } else {
+        return url
+    }
+    
+    return components.url!
+}

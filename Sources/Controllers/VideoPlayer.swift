@@ -116,7 +116,6 @@ public class VideoPlayer: Sendable {
     private var bufferingObserver: NSKeyValueObservation?
     private var dismissControlPanelTask: Task<Void, Never>?
     private var playlistReader: PlaylistReader?
-    private var playlistWriter: PlaylistWriter?
     
     //MARK: Immutable variables
     /// The video player
@@ -175,9 +174,9 @@ public class VideoPlayer: Sendable {
         title = stream.title
         details = stream.details
         
-        let asset = AVURLAsset(url: stream.url)
-        let playerItem = AVPlayerItem(asset: asset)
-        playerItem.preferredPeakBitRate = 200_000_000 // 200 Mbps LFG!
+        guard let playerItem = makePlayerItem() else {
+            return
+        }
         player.replaceCurrentItem(with: playerItem)
         scrubState = .notScrubbing
         setupObservers()
@@ -188,7 +187,8 @@ public class VideoPlayer: Sendable {
             
             // Detect resolution and field of view, if available
             Task { [self] in
-                guard let (resolution, horizontalFieldOfView) =
+                guard let asset = playerItem.asset as? AVURLAsset,
+                      let (resolution, horizontalFieldOfView) =
                         await VideoTools.getVideoDimensions(asset: asset) else {
                     return
                 }
@@ -216,35 +216,14 @@ public class VideoPlayer: Sendable {
                     if reader.audios.count > 0 {
                         self.audioOptions = reader.audios
                     }
-                    
-                    self.playlistWriter = PlaylistWriter(from: reader.rawText, baseURL: stream.url)
                 }
             }
         }
     }
     
     /// Load a stream variant for the currently selected resolution and audio options, preserving other states.
-    private func openStreamVariant() {
-        guard let playlistReader else {
-            return
-        }
-        
-        // index -1 is automatic, that is to say the original URL parsed by the playlist reader
-        if selectedResolutionIndex < 0, selectedAudioIndex < 0 {
-            openStreamVariant(playlistReader.url)
-        } else {
-            makeStreamVariant() { @MainActor url in
-                self.openStreamVariant(url)
-            }
-        }
-    }
-    
-    /// Load the corresponding stream variant from a given url, preserving other states.
-    /// - Parameters:
-    ///   - url: the url to the stream variant.
-    private func openStreamVariant(_ url: URL) {
-        guard let currentAsset = player.currentItem?.asset as? AVURLAsset else {
-            // nothing is currently playing
+    private func playSelectedStream() {
+        guard let playerItem = makePlayerItem() else {
             return
         }
         
@@ -252,50 +231,40 @@ public class VideoPlayer: Sendable {
             shouldShowPlaybackOptions = false
         }
         
-        guard currentAsset.url != url else {
-            // already playing the correct url
-            return
-        }
-        
         // temporarily stop the observers to stop them from interfering in the state changes
         tearDownObservers()
         
-        let restrictions = AVAssetReferenceRestrictions.forbidRemoteReferenceToLocal
-        let options = [AVURLAssetReferenceRestrictionsKey: NSNumber(value: restrictions.rawValue)]
-        let asset = AVURLAsset(url: url, options: options)
-        let playerItem = AVPlayerItem(asset: asset)
         player.replaceCurrentItem(with: playerItem)
+        
         // "simulating" a scrub end will seek the current time to the right spot
         scrubState = .scrubEnded
+        
         setupObservers()
+        
         if !paused {
             play()
         }
     }
     
-    /// Generate a playlist file for the currently selected resolution and audio options
-    /// - Parameters:
-    ///   - completionAction: the callback to execute after writing the playlist file succeeds.
-    private func makeStreamVariant(completionAction: (@MainActor (URL) -> Void)?) {
-        guard let playlistWriter else {
-            return
+    private func makePlayerItem() -> AVPlayerItem? {
+        guard let url else {
+            return nil
         }
         
+        if url.host() == nil {
+            return AVPlayerItem(url: url)
+        }
+        
+        // if streaming from a HLS playlist, use a delegate to optionally restrict video or audio options
         let resolutionOption = selectedResolutionIndex < 0 ? nil : resolutionOptions[selectedResolutionIndex]
         let audioOption = selectedAudioIndex < 0 ? nil : audioOptions[selectedAudioIndex]
-        
-        Task {
-            do {
-                try await playlistWriter.writeVariant(
-                    withResolution: resolutionOption,
-                    withAudio: audioOption,
-                    completionAction: completionAction
-                )
-            }
-            catch {
-                print("Error writing custom stream variant: \(error.localizedDescription)")
-            }
-        }
+        let delegate = PlaylistLoaderDelegate(resolutionOption: resolutionOption, audioOption: audioOption)
+        // replace http/https with a custom hls url scheme in order to activate the delegate
+        let assetURL = hlsURL(from: url)
+        let playerAsset = AVURLAsset(url: assetURL)
+        playerAsset.resourceLoader.setDelegate(delegate, queue: .main)
+        let playerItem = AVPlayerItem(asset: playerAsset)
+        return playerItem
     }
     
     /// Load the resolution option for the given index, and play the corresponding video variant url if successful.
@@ -309,7 +278,7 @@ public class VideoPlayer: Sendable {
         }
         
         selectedResolutionIndex = index
-        openStreamVariant()
+        playSelectedStream()
     }
     
     /// Load the audio option for the given index, and play the corresponding audio variant url if successful.
@@ -323,7 +292,7 @@ public class VideoPlayer: Sendable {
         }
         
         selectedAudioIndex = index
-        openStreamVariant()
+        playSelectedStream()
     }
     
     /// Play or unpause media playback.
