@@ -116,6 +116,7 @@ public class VideoPlayer: Sendable {
     private var bufferingObserver: NSKeyValueObservation?
     private var dismissControlPanelTask: Task<Void, Never>?
     private var playlistReader: PlaylistReader?
+    private var delegate: PlaylistLoaderDelegate?
     
     //MARK: Immutable variables
     /// The video player
@@ -174,7 +175,7 @@ public class VideoPlayer: Sendable {
         title = stream.title
         details = stream.details
         
-        guard let playerItem = makePlayerItem() else {
+        guard let playerItem = makePlayerItem(stream.url) else {
             return
         }
         player.replaceCurrentItem(with: playerItem)
@@ -223,7 +224,8 @@ public class VideoPlayer: Sendable {
     
     /// Load a stream variant for the currently selected resolution and audio options, preserving other states.
     private func playSelectedStream() {
-        guard let playerItem = makePlayerItem() else {
+        guard let url,
+              let playerItem = makePlayerItem(url) else {
             return
         }
         
@@ -246,22 +248,34 @@ public class VideoPlayer: Sendable {
         }
     }
     
-    private func makePlayerItem() -> AVPlayerItem? {
-        guard let url else {
-            return nil
-        }
-        
-        if url.host() == nil {
+    /// Generate the player item from the given URL.
+    /// If the URL is for a root HLS playlist on a remote server, attach a PlaylistLoaderDelegate to its asset in order to enable resolution/audio selection.
+    /// - Parameters:
+    ///   - url: the URL to the media.
+    private func makePlayerItem(_ url: URL) -> AVPlayerItem? {
+        if url.host() == nil, url.pathExtension != "m3u8" {
             return AVPlayerItem(url: url)
         }
         
         // if streaming from a HLS playlist, use a delegate to optionally restrict video or audio options
         let resolutionOption = selectedResolutionIndex < 0 ? nil : resolutionOptions[selectedResolutionIndex]
         let audioOption = selectedAudioIndex < 0 ? nil : audioOptions[selectedAudioIndex]
-        let delegate = PlaylistLoaderDelegate(resolutionOption: resolutionOption, audioOption: audioOption)
-        // replace http/https with a custom hls url scheme in order to activate the delegate
-        let assetURL = hlsURL(from: url)
-        let playerAsset = AVURLAsset(url: assetURL)
+        
+        // tricky: persist and reuse the delegate object for it to be used by AVFoundation
+        let delegate = {
+            if let delegate = self.delegate {
+                delegate.url = url
+                delegate.resolutionOption = resolutionOption
+                delegate.audioOption = audioOption
+                return delegate
+            }
+            let delegate = PlaylistLoaderDelegate(url, resolutionOption: resolutionOption, audioOption: audioOption)
+            self.delegate = delegate
+            return delegate
+        }()
+        
+        // tricky: replace http/https with a custom url scheme for the delegate object to be used by AVFoundation
+        let playerAsset = AVURLAsset(url: delegate.customSchemeURL)
         playerAsset.resourceLoader.setDelegate(delegate, queue: .main)
         let playerItem = AVPlayerItem(asset: playerAsset)
         return playerItem

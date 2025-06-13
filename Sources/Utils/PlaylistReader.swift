@@ -66,12 +66,12 @@ public actor PlaylistReader {
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 try await parseData(data)
-                await Task { @MainActor in
+                Task { @MainActor in
                     state = .success
                 }
             }
             catch {
-                await Task { @MainActor in
+                Task { @MainActor in
                     state = .error(error: error)
                 }
             }
@@ -93,8 +93,8 @@ public actor PlaylistReader {
             throw PlaylistReaderError.ParsingError
         }
         
-        async let parseResolutions = parseResolutions(from: text)
-        async let parseAudioOptions = parseAudioOptions(from: text)
+        async let parseResolutions: () = parseResolutions(from: text)
+        async let parseAudioOptions: () = parseAudioOptions(from: text)
         async let setRawText = Task { @MainActor in
             rawText = text
         }
@@ -124,20 +124,21 @@ public actor PlaylistReader {
                   let averageBitrate = Int(averageBandwidth),
                   let peakBitrate = Int(peakBandwidth),
                   averageBitrate > 0 || peakBitrate > 0,
-                  index + 1 < lines.count
+                  index + 1 < lines.count,
+                  let url = URL(string: lines[index + 1])
             else { continue }
             
             let option = ResolutionOption(
                 size: CGSize(width: width, height: height),
                 averageBitrate: averageBitrate,
                 peakBitrate: peakBitrate,
-                url: hlsURL(from: absoluteURL(from: lines[index + 1], relativeTo: url))
+                url: url
             )
         
             resolutionOptions.append(option)
         }
         
-        await Task { @MainActor in
+        Task { @MainActor in
             resolutions = resolutionOptions.sorted()
         }
     }
@@ -158,7 +159,8 @@ public actor PlaylistReader {
         for line in lines {
             guard let audio = try? audioSearch.firstMatch(in: line),
                   let groupId = try? groupIdSearch.firstMatch(in: audio.attributes),
-                  let uri = try? uriSearch.firstMatch(in: audio.attributes)
+                  let uri = try? uriSearch.firstMatch(in: audio.attributes),
+                  let url = URL(string: String(uri.url))
             else { continue }
             
             var language = ""
@@ -172,7 +174,7 @@ public actor PlaylistReader {
             }
             
             let option = AudioOption(
-                url: hlsURL(from: absoluteURL(from: String(uri.url), relativeTo: url)),
+                url: url,
                 groupId: String(groupId.groupId),
                 name: name,
                 language: language
@@ -181,7 +183,7 @@ public actor PlaylistReader {
             audioOptions.append(option)
         }
         
-        await Task { @MainActor in
+        Task { @MainActor in
             audios = audioOptions.sorted()
         }
     }

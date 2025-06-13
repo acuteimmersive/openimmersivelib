@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// Maintains a local m3u8 playlist to enable user selection of audio and video variants.
+/// Maintains a local m3u8 playlist and outputs a filtered version of it to enable user selection of audio and video variants.
 public actor PlaylistWriter {
     /// Errors specific to Playlist Writer
     public enum PlaylistWriterError: Error {
@@ -53,10 +53,6 @@ public actor PlaylistWriter {
                             completionAction: ((Data) -> Void)? = nil) throws -> Data {
         var lines = rawText.components(separatedBy: .newlines)
         
-        if absoluteURLs {
-            try makeURLsAbsolute(&lines)
-        }
-        
         if let resolutionOption {
             try filterResolution(&lines, resolutionOption)
         }
@@ -65,8 +61,11 @@ public actor PlaylistWriter {
             try filterAudio(&lines, audioOption)
         }
         
+        if absoluteURLs {
+            try makeURLsAbsolute(&lines)
+        }
+        
         let filteredText = lines.joined(separator: "\n")
-        print("makeVariant:\n\(filteredText)\n")
         guard let data = filteredText.data(using: .utf8) else {
             throw PlaylistWriterError.WriteError
         }
@@ -74,30 +73,6 @@ public actor PlaylistWriter {
         completionAction?(data)
         
         return data
-    }
-    
-    /// Update all the URLs to ensure they are absolute URLs.
-    /// - Parameters:
-    ///   - lines: the lines of the playlist file.
-    private func makeURLsAbsolute(_ lines: inout [String]) throws {
-        //TODO: throw an error if?
-        
-        let uriSearch = /URI="(?<url>[^"]+)"/
-        
-        for (index, line) in lines.enumerated() {
-            // Make URLs absolute for video segments & playlists
-            let previousLine = index > 0 ? lines[index - 1] : ""
-            if previousLine.starts(with: "#EXT-X-STREAM-INF:") {
-                // then the current line is always a URL but might be relative
-                lines[index] = absoluteURL(from: line, relativeTo: baseURL).absoluteString
-            }
-            
-            // Make URLs absolute for others (audio, subtitles, etc.)
-            if let uri = try? uriSearch.firstMatch(in: line) {
-                let string = String(uri.url)
-                lines[index] = line.replacingOccurrences(of: string, with: absoluteURL(from: string, relativeTo: baseURL).absoluteString)
-            }
-        }
     }
     
     /// Remove all the video resolution/quality variants other than the one provided.
@@ -123,7 +98,7 @@ public actor PlaylistWriter {
             
             if line.starts(with: "#EXT-X-STREAM-INF:"),
                !nextLine.isEmpty,
-               resolution.url.absoluteString != nextLine {
+               !nextLine.contains(resolution.url.relativePath) {
                 skipNext = true
                 continue
             }
@@ -144,13 +119,51 @@ public actor PlaylistWriter {
         let uriSearch = /URI="(?<url>[^"]+)"/
         let uriMatches = { (line: String) -> Bool in
             if let uri = try? uriSearch.firstMatch(in: line) {
-                return audio.url.absoluteString == String(uri.url)
+                return String(uri.url).contains(audio.url.relativePath)
             }
             return false
         }
         
         lines.removeAll { line in
             line.starts(with: "#EXT-X-MEDIA:TYPE=AUDIO") && !uriMatches(line)
+        }
+    }
+    
+    /// Update all the URLs to ensure they are absolute URLs.
+    /// - Parameters:
+    ///   - lines: the lines of the playlist file.
+    private func makeURLsAbsolute(_ lines: inout [String]) throws {
+        //TODO: throw an error if?
+        
+        let uriSearch = /URI="(?<url>[^"]+)"/
+        
+        for (index, line) in lines.enumerated() {
+            // Make URLs absolute for video segments & playlists
+            let previousLine = index > 0 ? lines[index - 1] : ""
+            if previousLine.starts(with: "#EXT-X-STREAM-INF:") {
+                // then the current line is always a URL but might be relative
+                lines[index] = absoluteURL(from: line).absoluteString
+            }
+            
+            // Make URLs absolute for others (audio, subtitles, etc.)
+            if let uri = try? uriSearch.firstMatch(in: line) {
+                let string = String(uri.url)
+                lines[index] = line.replacingOccurrences(of: string, with: absoluteURL(from: string).absoluteString)
+            }
+        }
+    }
+    
+    /// Assembles an absolute URL to a resource from a string that may be a relative or absolute URL.
+    /// - Parameters:
+    ///   - string: the input string, which is assumed to be an absolute URL or a relative path.
+    /// - Returns: a URL object to an absolute URL that's either the input string (if already absolute) or the path appended to the base URL otherwise.
+    private func absoluteURL(from string: String) -> URL {
+        // testing for host() ensures that the URL is absolute
+        if let url = URL(string: string), url.host() != nil {
+            url
+        } else {
+            // the URL is a relative path
+            URL(filePath: string, relativeTo: baseURL)
         }
     }
 }

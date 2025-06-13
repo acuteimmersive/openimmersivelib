@@ -10,12 +10,8 @@ import SwiftUI
 
 /// Fetches custom values in the application's openimmersive.plist
 public final class Config: Sendable {
-    /// URL scheme to substitute to http for loading HLS playlists (String): this is needed for selecting bandwidth or audio.
+    /// URL scheme to substitute to http/https for loading HLS playlists (String): this is needed for selecting bandwidth or audio.
     public let customHttpUrlScheme: String
-    /// URL scheme to substitute to https for loading HLS playlists (String).
-    public var customHttpsUrlScheme: String {
-        customHttpUrlScheme + "s"
-    }
     /// Vertical offset of the control panel in meters (Number): + is up, - is down.
     public let controlPanelVerticalOffset: Float
     /// Horizontal offset of the control panel in meters (Number): + is forward, - is backward.

@@ -7,60 +7,88 @@
 
 import AVFoundation
 
+/// A delegate that intercepts the loading of AVURLAsset objects whose URL point to a remote HLS root playlist (.m3u8).
+/// This delegate pulls the playlist file and rewrites it as desired in order to only keep the desired resolution and audio options.
 public class PlaylistLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
-    public let resolutionOption: ResolutionOption?
-    public let audioOption: AudioOption?
+    /// The URL of the HLS root playlist (.m3u8).
+    public var url: URL
+    /// The URL of the HLS root playlist (see `url`), with http:// or https:// swapped with the app's custom url scheme as defined in `Config.customHttpUrlScheme`.
+    public var customSchemeURL: URL {
+        guard var components = URLComponents(url: self.url, resolvingAgainstBaseURL: false),
+              ["http", "https"].contains(components.scheme)
+        else {
+            return url
+        }
+        components.scheme = Config.shared.customHttpUrlScheme
+        return components.url!
+    }
+    /// The selected resolution/bitrate option, if any.
+    public var resolutionOption: ResolutionOption?
+    /// The selected audio language/format option, if any.
+    public var audioOption: AudioOption?
     
-    public init(resolutionOption: ResolutionOption? = nil, audioOption: AudioOption? = nil) {
+    /// Public initializer for visibility.
+    /// - Parameters:
+    ///    - url: the URL of the HLS root playlist (.m3u8).
+    ///    - resolutionOption: the desired resolution option, as parsed from `PlaylistReader`.
+    ///    - audioOption: the desired audio option, as parsed from `PlaylistReader`.
+    public init(_ url: URL, resolutionOption: ResolutionOption? = nil, audioOption: AudioOption? = nil) {
+        self.url = url
         self.resolutionOption = resolutionOption
         self.audioOption = audioOption
     }
     
+    /// Invoked when assistance is required of the application to load a resource.
+    /// - Parameters:
+    ///    - resourceLoader: The instance of AVAssetResourceLoader for which the loading request is being made.
+    ///    - loadingRequest: An instance of AVAssetResourceLoadingRequest that provides information about the requested resource.
+    /// - Returns: true if the delegate can load the resource indicated by the AVAssetResourceLoadingRequest; otherwise false.
+    ///
+    /// See `AVAssetResourceLoaderDelegate` for more details.
+    ///
+    /// This implementation intercepts HLS playlist requests and filters the response according to the configuration of the delegate,
+    /// in order to only keep the desired resolution/bitrate and/or audio language/format.
     public func resourceLoader(_ resourceLoader: AVAssetResourceLoader,
                                shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
-        print("resource loader should wait for loading of requested resource: \(loadingRequest.request.url?.absoluteString ?? "???")")
-        
-        let customSchemes = [Config.shared.customHttpUrlScheme, Config.shared.customHttpsUrlScheme]
         guard let requestURL = loadingRequest.request.url,
               let scheme = requestURL.scheme,
-              customSchemes.contains(scheme) else {
-            print("skipping non-m3u8 resource: \(loadingRequest.request.url?.absoluteString ?? "???")")
+              scheme == Config.shared.customHttpUrlScheme else {
             return false
         }
-        
-        guard resolutionOption != nil || audioOption != nil else {
-            print("skipping no resolution option and no audio option")
-            return false
-        }
-        
-        let url = httpURL(from: requestURL)
+        let url = self.url
         let resolution = self.resolutionOption
         let audio = self.audioOption
 
         Task {
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
+                if let contentInformationRequest = loadingRequest.contentInformationRequest {
+                    let (data, response) = try await URLSession.shared.data(from: url)
+                    
+                    contentInformationRequest.contentType = response.mimeType
+                    contentInformationRequest.contentLength = Int64(data.count)
+                    contentInformationRequest.isByteRangeAccessSupported = false
+                    contentInformationRequest.isEntireLengthAvailableOnDemand = true
+                    contentInformationRequest.renewalDate = nil
+                }
                 
-                let writer = try PlaylistWriter(from: data, baseURL: url)
-                let filteredData = try await writer.makeVariant(
-                    withResolution: resolution,
-                    withAudio: audio
-                )
+                if let dataRequest = loadingRequest.dataRequest {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    
+                    let writer = try PlaylistWriter(from: data, baseURL: url)
+                    let filteredData = try await writer.makeVariant(
+                        withResolution: resolution,
+                        withAudio: audio,
+                        absoluteURLs: true
+                    )
+                    dataRequest.respond(with: filteredData)
+                }
                 
-                loadingRequest.dataRequest?.respond(with: filteredData)
                 loadingRequest.finishLoading()
             } catch {
-                print("Error while processing the filtered playlist: \(error)")
+                print("Error while processing the asset loading request: \(error.localizedDescription)")
                 loadingRequest.finishLoading(with: error)
             }
         }
         return true
-    }
-    
-    public func resourceLoader(_ resourceLoader: AVAssetResourceLoader,
-                               shouldWaitForRenewalOfRequestedResource renewalRequest: AVAssetResourceRenewalRequest
-    ) -> Bool {
-        print("resource loader should wait for renewal of requested resource: \(renewalRequest.request.url?.absoluteString ?? "???")")
-        return false
     }
 }
