@@ -46,7 +46,7 @@ public struct FilePicker: View {
                 break
                 
             case .failure(let error):
-                print("Error: failed to load file: \(error)")
+                print("Error: failed to load file: \(error.localizedDescription)")
                 break
             }
         }

@@ -13,8 +13,6 @@ public actor PlaylistReader {
     public enum PlaylistReaderError: Error {
         /// The URL could not be read as a UTF8 text file.
         case ParsingError
-        /// No resolution information was parsed from the URL.
-        case NoAvailableResolutionError
     }
     
     public enum State {
@@ -32,9 +30,15 @@ public actor PlaylistReader {
     /// Current state of the Playlist Reader.
     @MainActor
     private(set) public var state: State = .fetching
+    /// Text copy of the playlist.
+    @MainActor
+    private(set) public var rawText: String = ""
     /// Resolution options parsed from the playlist resource at `url`.
     @MainActor
     private(set) public var resolutions: [ResolutionOption] = []
+    /// AudioOptions parsed from the playest resource at `url`.
+    @MainActor
+    private(set) public var audios: [AudioOption] = []
     /// Error that caused `state` to be set to `.error`. Will be `nil` if `state` is not `.error`.
     @MainActor
     public var error: Error? {
@@ -54,7 +58,7 @@ public actor PlaylistReader {
     ///   - completionAction: the callback to execute after parsing the playlist file succeeds or fails.
     public init(
         url: URL,
-        completionAction: (@Sendable (PlaylistReader) -> Void)?
+        completionAction: (@MainActor (PlaylistReader) -> Void)?
     ) {
         self.url = url
         
@@ -62,26 +66,20 @@ public actor PlaylistReader {
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 try await parseData(data)
-                await setState(.success)
+                Task { @MainActor in
+                    state = .success
+                }
             }
             catch {
-                await setState(.error(error: error))
+                Task { @MainActor in
+                    state = .error(error: error)
+                }
             }
             
-            completionAction?(self)
+            Task { @MainActor in
+                completionAction?(self)
+            }
         }
-    }
-    
-    /// Thread safe setter for the current state of the Playlist Reader
-    @MainActor
-    private func setState(_ state: State) {
-        self.state = state
-    }
-    
-    /// Thread safe setter for the resolution of the Playlist Reader
-    @MainActor
-    private func setResolutions(_ resolutions: [ResolutionOption]) {
-        self.resolutions = resolutions
     }
     
     /// Parses raw data to populate the Playlist Reader's properties.
@@ -89,60 +87,104 @@ public actor PlaylistReader {
     ///   - data: raw data to be parsed, likely the response of a web request,
     ///   expected to be contents of a m3u8 HLS media playlist file.
     ///
-    ///   Throws an error if the data is not text, or if no resolutions are found.
-    private func parseData(_ data: Data) throws {
+    ///   Throws an error if the data is not text.
+    private func parseData(_ data: Data) async throws {
         guard let text = String(data: data, encoding: .utf8) else {
             throw PlaylistReaderError.ParsingError
         }
         
-        let resolutions = parseResolutions(from: text)
-        
-        if resolutions.isEmpty {
-            throw PlaylistReaderError.NoAvailableResolutionError
+        async let parseResolutions: () = parseResolutions(from: text)
+        async let parseAudioOptions: () = parseAudioOptions(from: text)
+        async let setRawText = Task { @MainActor in
+            rawText = text
         }
         
-        Task {
-            await setResolutions(resolutions)
-        }
+        // Run the tasks in parallel
+        await (parseResolutions, parseAudioOptions, setRawText)
     }
     
-    /// Parses a list of Resolution Options from
+    /// Parses a list of Resolution Options from the playlist.
     /// - Parameters:
     ///   - text: text to be parsed, expected to be the contents of a m3u8 HLS media playlist file.
-    /// - Returns: a list of Resolution Options, sorted from highest to lowest.
-    private func parseResolutions(from text: String) -> [ResolutionOption] {
-        var resolutions: [ResolutionOption] = []
+    private func parseResolutions(from text: String) async {
+        var resolutionOptions: [ResolutionOption] = []
+        
         let resolutionSearch = /RESOLUTION=(?<width>\d+)x(?<height>\d+),/
-        let bandwidthSearch = /BANDWIDTH=(?<bitrate>\d+),/
+        let averageBandwidthSearch = /AVERAGE-BANDWIDTH=(?<averageBandwidth>\d+),/
+        let bandwidthSearch = /BANDWIDTH=(?<bandwidth>\d+),/
         
         let lines = text.components(separatedBy: .newlines)
         for (index, line) in lines.enumerated() {
-            if let resolution = try? resolutionSearch.firstMatch(in: line),
-               let bandwidth = try? bandwidthSearch.firstMatch(in: line),
-               let width = Int(resolution.width),
-               let height = Int(resolution.height),
-               let bitrate = Int(bandwidth.bitrate),
-               index + 1 < lines.count {
-                let url = {
-                    // testing for host() ensures that the URL is absolute
-                    if let playlistUrl = URL(string: lines[index + 1]),
-                        let _ = playlistUrl.host() {
-                        return playlistUrl
-                    } else {
-                        // we got a relative path
-                        return URL(filePath: lines[index + 1], relativeTo: self.url)
-                    }
-                }()
-                
-                let option = ResolutionOption(
-                    size: CGSize(width: width, height: height),
-                    bitrate: bitrate,
-                    url: url
-                )
-                resolutions.append(option)
-            }
+            let averageBandwidth = (try? averageBandwidthSearch.firstMatch(in: line))?.averageBandwidth ?? "0"
+            let peakBandwidth = (try? bandwidthSearch.firstMatch(in: line)?.bandwidth) ?? "0"
+            
+            guard let resolution = try? resolutionSearch.firstMatch(in: line),
+                  let width = Int(resolution.width),
+                  let height = Int(resolution.height),
+                  let averageBitrate = Int(averageBandwidth),
+                  let peakBitrate = Int(peakBandwidth),
+                  averageBitrate > 0 || peakBitrate > 0,
+                  index + 1 < lines.count,
+                  let url = URL(string: lines[index + 1])
+            else { continue }
+            
+            let option = ResolutionOption(
+                size: CGSize(width: width, height: height),
+                averageBitrate: averageBitrate,
+                peakBitrate: peakBitrate,
+                url: url
+            )
+        
+            resolutionOptions.append(option)
         }
         
-        return resolutions.sorted { $0.size.width > $1.size.width }
+        Task { @MainActor in
+            resolutions = resolutionOptions.sorted()
+        }
+    }
+    
+    /// Parses a list of Audio Options from the playlist.
+    /// - Parameters:
+    ///   - text: text to be parsed, expected to be the contents of an HLS m3u8 playlist file.
+    private func parseAudioOptions(from text: String) async {
+        var audioOptions: [AudioOption] = []
+        
+        let audioSearch = /#EXT-X-MEDIA:TYPE=AUDIO,(?<attributes>.+)/
+        let groupIdSearch = /GROUP-ID="(?<groupId>[^"]+)"/
+        let nameSearch = /NAME="(?<name>[^"]+)"/
+        let languageSearch = /LANGUAGE="(?<language>[^"]+)"/
+        let uriSearch = /URI="(?<url>[^"]+)"/
+
+        let lines = text.components(separatedBy: .newlines)
+        for line in lines {
+            guard let audio = try? audioSearch.firstMatch(in: line),
+                  let groupId = try? groupIdSearch.firstMatch(in: audio.attributes),
+                  let uri = try? uriSearch.firstMatch(in: audio.attributes),
+                  let url = URL(string: String(uri.url))
+            else { continue }
+            
+            var language = ""
+            if let match = try? languageSearch.firstMatch(in: audio.attributes) {
+                language = String(match.language)
+            }
+            
+            var name = ""
+            if let match = try? nameSearch.firstMatch(in: audio.attributes) {
+                name = String(match.name)
+            }
+            
+            let option = AudioOption(
+                url: url,
+                groupId: String(groupId.groupId),
+                name: name,
+                language: language
+            )
+            
+            audioOptions.append(option)
+        }
+        
+        Task { @MainActor in
+            audios = audioOptions.sorted()
+        }
     }
 }

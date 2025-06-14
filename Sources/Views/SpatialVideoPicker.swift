@@ -46,7 +46,7 @@ public struct SpatialVideoPicker: View {
                         loadStreamAction(stream)
                     }
                 } catch {
-                    print("Error: could not load SpatialVideo Transferable: \(error)")
+                    print("Error: could not load SpatialVideo Transferable: \(error.localizedDescription)")
                 }
             }
         }

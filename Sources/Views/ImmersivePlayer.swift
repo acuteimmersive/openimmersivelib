@@ -89,6 +89,13 @@ public struct ImmersivePlayer: View {
                 }
             }
             
+            // Show a an error message when playback fails
+            if let errorView = attachments.entity(for: "ErrorView") {
+                errorView.name = "ErrorView"
+                errorView.position = [0, 0, -0.7]
+                root.addChild(errorView)
+            }
+            
             // Show a spinny animation when the video is buffering
             if let progressView = attachments.entity(for: "ProgressView") {
                 progressView.name = "ProgressView"
@@ -101,7 +108,11 @@ public struct ImmersivePlayer: View {
             root.addChild(tapCatcher)
         } update: { content, attachments in
             if let progressView = attachments.entity(for: "ProgressView") {
-                progressView.isEnabled = videoPlayer.buffering
+                progressView.isEnabled = videoPlayer.buffering || videoPlayer.loading
+            }
+            
+            if let errorView = attachments.entity(for: "ErrorView") {
+                errorView.isEnabled = videoPlayer.error != nil
             }
         } placeholder: {
             ProgressView()
@@ -113,6 +124,21 @@ public struct ImmersivePlayer: View {
             
             Attachment(id: "ProgressView") {
                 ProgressView()
+            }
+            
+            Attachment(id: "ErrorView") {
+                VStack {
+                    Image(systemName: "play.slash")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 50)
+                        .padding()
+                    Text(videoPlayer.error?.localizedDescription ?? "Media failed to play due to an unknown error.")
+                        .frame(maxWidth: 400)
+                        .padding()
+                }
+                .padding()
+                .glassBackgroundEffect()
             }
             
             ForEach(customAttachments) { attachment in

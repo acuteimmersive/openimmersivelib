@@ -34,13 +34,12 @@ public struct ControlPanel: View {
         if videoPlayer.shouldShowControlPanel {
             VStack(alignment: .trailing) {
                 // Hidden view above the control panel that can reveal to show additional options
-                HStack {
-                    if videoPlayer.shouldShowResolutionOptions {
-                        ResolutionSelector(videoPlayer: $videoPlayer)
-                    }
+                if videoPlayer.shouldShowPlaybackOptions {
+                    VariantSelector(videoPlayer: $videoPlayer)
+                        .transition(.scale(0, anchor: .trailing))
+                        .frame(minHeight: 0, alignment: .bottom)
+                        .padding()
                 }
-                .frame(minHeight: 60, alignment: .bottom)
-                .padding()
                 
                 VStack {
                     HStack {
@@ -86,10 +85,6 @@ public struct MediaInfo: View {
     }
     
     public var body: some View {
-        let config = Config.shared
-        
-        let hasResolutionOptions = videoPlayer.resolutionOptions.count > 1  && config.controlPanelShowResolutionOptions
-        
         ZStack(alignment: .trailing) {
             // Video title and details text
             VStack {
@@ -105,11 +100,11 @@ public struct MediaInfo: View {
             .padding(.vertical)
             .truncationMode(.tail)
             
-            if hasResolutionOptions {
+            if videoPlayer.canChooseResolution || videoPlayer.canChooseAudio {
                 ResolutionToggle(videoPlayer: $videoPlayer)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 90, maxHeight: CGFloat(config.controlPanelMediaInfoMaxHeight))
+        .frame(maxWidth: .infinity, minHeight: 90, maxHeight: CGFloat(Config.shared.controlPanelMediaInfoMaxHeight))
         .fixedSize(horizontal: false, vertical: true)
         .background(Color.black.opacity(0.5))
         .cornerRadius(30)
@@ -131,8 +126,8 @@ public struct ResolutionToggle: View {
     public var body: some View {
         let config = Config.shared
         let showResolutionOptions = Binding<Bool>(
-            get: { videoPlayer.shouldShowResolutionOptions },
-            set: { _ in videoPlayer.toggleResolutionOptions() }
+            get: { videoPlayer.shouldShowPlaybackOptions },
+            set: { _ in videoPlayer.togglePlaybackOptions() }
         )
         let showBitrate = config.controlPanelShowBitrate && videoPlayer.bitrate > 0
         
@@ -172,7 +167,7 @@ public struct BitrateReadout: View {
 
     /// Evaluates the font color for the bitrate label depending on bitrate value.
     /// - Parameters:
-    ///   - bitrate: the bitrate value as an `Double`
+    ///   - bitrate: the bitrate value as a `Double`
     ///   - ladder: the resolution options for the stream
     ///   - tolerance: the tolerance for color threshold (default 1.2Mbps)
     /// - Returns: White if top bitrate for the stream, yellow if second best, orange if third best, red otherwise.
@@ -319,7 +314,7 @@ public struct TimeText: View {
 }
 
 /// A row of buttons to select the resolution / quality of the video stream.
-public struct ResolutionSelector: View {
+public struct VariantSelector: View {
     /// The singleton video player control interface.
     @Binding var videoPlayer: VideoPlayer
     
@@ -331,29 +326,74 @@ public struct ResolutionSelector: View {
     }
     
     public var body: some View {
-        let options = videoPlayer.resolutionOptions
-        let zippedOptions = Array(zip(options.indices, options))
-        
-        HStack {
-            Button {
-                videoPlayer.openResolutionOption(index: -1)
-            } label: {
-                Text("Auto")
-                    .font(.headline)
+        VStack(alignment: .trailing) {
+            if videoPlayer.canChooseAudio {
+                let options = videoPlayer.audioOptions
+                let zippedOptions = Array(zip(options.indices, options))
+                let isOn: (Int) -> Binding<Bool> = { index in
+                    Binding {
+                        videoPlayer.selectedAudioIndex == index
+                    } set: { _ in
+                        videoPlayer.openAudioOption(index: index)
+                    }
+                }
+                
+                HStack {
+                    Toggle(isOn: isOn(-1)) {
+                        Text("Default")
+                            .font(.headline)
+                    }
+                    .toggleStyle(.button)
+                    
+                    ForEach(zippedOptions, id: \.0) { index, option in
+                        Toggle(isOn: isOn(index)) {
+                            VStack(spacing: -3) {
+                                Text(option.description)
+                                    .font(.caption)
+                                
+                                Text(option.groupId.capitalized)
+                                    .font(.caption2)
+                                    .opacity(0.8)
+                            }
+                            .padding(.vertical, -5)
+                        }
+                        .toggleStyle(.button)
+                    }
+                }
             }
             
-            ForEach(zippedOptions, id: \.0) { index, option in
-                Button {
-                    videoPlayer.openResolutionOption(index: index)
-                } label: {
-                    Text(option.resolutionString)
-                        .font(.subheadline)
-                    Text(option.bitrateString)
-                        .font(.caption)
-                        .opacity(0.8)
+            if videoPlayer.canChooseResolution {
+                let options = videoPlayer.resolutionOptions
+                let zippedOptions = Array(zip(options.indices, options))
+                let isOn: (Int) -> Binding<Bool> = { index in
+                    Binding {
+                        videoPlayer.selectedResolutionIndex == index
+                    } set: { _ in
+                        videoPlayer.openResolutionOption(index: index)
+                    }
+                }
+                
+                HStack {
+                    Toggle(isOn: isOn(-1)) {
+                        Text("Auto")
+                            .font(.headline)
+                    }
+                    .toggleStyle(.button)
+                    
+                    ForEach(zippedOptions, id: \.0) { index, option in
+                        Toggle(isOn: isOn(index)) {
+                            Text(option.resolutionString)
+                                .font(.subheadline)
+                            Text(option.bitrateString)
+                                .font(.caption)
+                                .opacity(0.8)
+                        }
+                        .toggleStyle(.button)
+                    }
                 }
             }
         }
+        
     }
 }
 

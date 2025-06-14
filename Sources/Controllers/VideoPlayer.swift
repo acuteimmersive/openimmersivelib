@@ -22,11 +22,15 @@ public class VideoPlayer: Sendable {
     private(set) public var details: String = ""
     /// The url of the current video.
     private(set) public var url: URL?
+    /// A playback error, if any.
+    private(set) public var error: Error?
     /// The duration in seconds of the current video (0 if none).
     private(set) public var duration: Double = 0
     /// `true` if playback is currently paused, or if playback has completed.
     private(set) public var paused: Bool = false
-    /// `true` if playback is temporarily interrupted due to buffering.
+    /// `true` if playback is waiting to load the media.
+    private(set) public var loading: Bool = false
+    /// `true` if playback is temporarily interrupted due to buffering (HLS only).
     private(set) public var buffering: Bool = false
     /// `true` if playback reached the end of the video and is no longer playing.
     private(set) public var hasReachedEnd: Bool = false
@@ -48,10 +52,24 @@ public class VideoPlayer: Sendable {
     private(set) public var bitrate: Double = 0
     /// Resolution options available for the video stream, only available if streaming from a HLS server (m3u8).
     private(set) public var resolutionOptions: [ResolutionOption] = []
+    /// The currently selected resolution option index, if any. Only available if streaming from a HLS server (m3u8).
+    private(set) public var selectedResolutionIndex: Int = -1
+    /// Audio options available for the video stream, only available if streaming from a HLS server (m3u8) and with separate audio playlists.
+    private(set) public var audioOptions: [AudioOption] = []
+    /// The currently selected resolution option index, if any. Only available if streaming from a HLS server (m3u8).
+    private(set) public var selectedAudioIndex: Int = -1
     /// `true` if the control panel should be visible to the user.
     private(set) public var shouldShowControlPanel: Bool = true
-    /// `true` if the control panel should present resolution options to the user.
-    private(set) public var shouldShowResolutionOptions: Bool = false
+    /// `true` if the control panel should present resolution & audio options to the user.
+    private(set) public var shouldShowPlaybackOptions: Bool = false
+    /// `true` if the stream has at least 2 resolution options and the custom configuration doesn't prevent user selection.
+    public var canChooseResolution: Bool {
+        resolutionOptions.count > 1 && Config.shared.controlPanelShowResolutionOptions
+    }
+    /// `true` if the stream has at least 2 audio options and the custom configuration doesn't prevent user selection.
+    public var canChooseAudio: Bool {
+        audioOptions.count > 1 && Config.shared.controlPanelShowAudioOptions
+    }
     
     /// The current time in seconds of the current video (0 if none).
     ///
@@ -94,9 +112,11 @@ public class VideoPlayer: Sendable {
     //MARK: Private variables
     private var timeObserver: Any?
     private var durationObserver: NSKeyValueObservation?
+    private var mediaStatusObserver: NSKeyValueObservation?
     private var bufferingObserver: NSKeyValueObservation?
     private var dismissControlPanelTask: Task<Void, Never>?
     private var playlistReader: PlaylistReader?
+    private var delegate: PlaylistLoaderDelegate?
     
     //MARK: Immutable variables
     /// The video player
@@ -108,6 +128,7 @@ public class VideoPlayer: Sendable {
     
     /// Instruct the UI to reveal the control panel.
     public func showControlPanel() {
+        shouldShowPlaybackOptions = false
         withAnimation {
             shouldShowControlPanel = true
         }
@@ -117,7 +138,7 @@ public class VideoPlayer: Sendable {
     /// Instruct the UI to hide the control panel.
     public func hideControlPanel() {
         withAnimation {
-            shouldShowResolutionOptions = false
+            shouldShowPlaybackOptions = false
             shouldShowControlPanel = false
         }
     }
@@ -131,13 +152,13 @@ public class VideoPlayer: Sendable {
         }
     }
     
-    /// Instruct the UI to toggle the visibility of resolutions options.
+    /// Instruct the UI to toggle the visibility of resolutions and audio options.
     ///
-    /// This will only do something if resolution options are available.
-    public func toggleResolutionOptions() {
-        if resolutionOptions.count > 1 {
+    /// This will only do something if resolution or audio options are available.
+    public func togglePlaybackOptions() {
+        if resolutionOptions.count > 1 || audioOptions.count > 1 {
             withAnimation {
-                shouldShowResolutionOptions.toggle()
+                shouldShowPlaybackOptions.toggle()
             }
             restartControlPanelTask()
         }
@@ -154,9 +175,9 @@ public class VideoPlayer: Sendable {
         title = stream.title
         details = stream.details
         
-        let asset = AVURLAsset(url: stream.url)
-        let playerItem = AVPlayerItem(asset: asset)
-        playerItem.preferredPeakBitRate = 200_000_000 // 200 Mbps LFG!
+        guard let playerItem = makePlayerItem(stream.url) else {
+            return
+        }
         player.replaceCurrentItem(with: playerItem)
         scrubState = .notScrubbing
         setupObservers()
@@ -167,7 +188,8 @@ public class VideoPlayer: Sendable {
             
             // Detect resolution and field of view, if available
             Task { [self] in
-                guard let (resolution, horizontalFieldOfView) =
+                guard let asset = playerItem.asset as? AVURLAsset,
+                      let (resolution, horizontalFieldOfView) =
                         await VideoTools.getVideoDimensions(asset: asset) else {
                     return
                 }
@@ -181,66 +203,110 @@ public class VideoPlayer: Sendable {
         // if streaming from HLS, attempt to retrieve the resolution options
         playlistReader = nil
         resolutionOptions = []
+        selectedResolutionIndex = -1
+        selectedAudioIndex = -1
         if stream.url.host() != nil {
-            playlistReader = PlaylistReader(url: stream.url) { reader in
-                Task { @MainActor in
-                    if case .success = reader.state,
-                       reader.resolutions.count > 0 {
-                        self.resolutionOptions = reader.resolutions.sorted(by: { lhs, rhs in
-                            lhs.bitrate < rhs.bitrate
-                        })
-                        let defaultResolution = reader.resolutions.first!.size
+            playlistReader = PlaylistReader(url: stream.url) { @MainActor reader in
+                if case .success = reader.state {
+                    if reader.resolutions.count > 0 {
+                        self.resolutionOptions = reader.resolutions
+                        let defaultResolution = reader.resolutions.last!.size
                         self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
+                    }
+                    
+                    if reader.audios.count > 0 {
+                        self.audioOptions = reader.audios
                     }
                 }
             }
         }
     }
     
-    /// Load the corresponding stream variant from a resolution option, preserving other states.
-    /// - Parameters:
-    ///   - url: the url to the stream variant.
-    private func openStreamVariant(_ url: URL) {
-        guard let asset = player.currentItem?.asset as? AVURLAsset else {
-            // nothing is currently playing
+    /// Load a stream variant for the currently selected resolution and audio options, preserving other states.
+    private func playSelectedStream() {
+        guard let url,
+              let playerItem = makePlayerItem(url) else {
             return
         }
         
         withAnimation {
-            shouldShowResolutionOptions = false
-        }
-        
-        guard asset.url != url else {
-            // already playing the correct url
-            return
+            shouldShowPlaybackOptions = false
         }
         
         // temporarily stop the observers to stop them from interfering in the state changes
         tearDownObservers()
-        let playerItem = AVPlayerItem(url: url)
+        
         player.replaceCurrentItem(with: playerItem)
+        
         // "simulating" a scrub end will seek the current time to the right spot
         scrubState = .scrubEnded
+        
         setupObservers()
+        
         if !paused {
             play()
         }
     }
     
-    /// Load the resolution option for the given index, and open the corresponding url if successful.
+    /// Generate the player item from the given URL.
+    /// If the URL is for a root HLS playlist on a remote server, attach a PlaylistLoaderDelegate to its asset in order to enable resolution/audio selection.
+    /// - Parameters:
+    ///   - url: the URL to the media.
+    private func makePlayerItem(_ url: URL) -> AVPlayerItem? {
+        if url.host() == nil, url.pathExtension != "m3u8" {
+            return AVPlayerItem(url: url)
+        }
+        
+        // if streaming from a HLS playlist, use a delegate to optionally restrict video or audio options
+        let resolutionOption = selectedResolutionIndex < 0 ? nil : resolutionOptions[selectedResolutionIndex]
+        let audioOption = selectedAudioIndex < 0 ? nil : audioOptions[selectedAudioIndex]
+        
+        // tricky: persist and reuse the delegate object for it to be used by AVFoundation
+        let delegate = {
+            if let delegate = self.delegate {
+                delegate.url = url
+                delegate.resolutionOption = resolutionOption
+                delegate.audioOption = audioOption
+                return delegate
+            }
+            let delegate = PlaylistLoaderDelegate(url, resolutionOption: resolutionOption, audioOption: audioOption)
+            self.delegate = delegate
+            return delegate
+        }()
+        
+        // tricky: replace http/https with a custom url scheme for the delegate object to be used by AVFoundation
+        let playerAsset = AVURLAsset(url: delegate.customSchemeURL)
+        playerAsset.resourceLoader.setDelegate(delegate, queue: .main)
+        let playerItem = AVPlayerItem(asset: playerAsset)
+        return playerItem
+    }
+    
+    /// Load the resolution option for the given index, and play the corresponding video variant url if successful.
     /// - Parameters:
     ///   - index: the index of the resolution option, -1 for adaptive bitrate (default)
     public func openResolutionOption(index: Int = -1) {
-        guard let playlistReader,
-              index < resolutionOptions.count
+        guard index < resolutionOptions.count,
+              index != selectedResolutionIndex
         else {
             return
         }
         
-        // index -1 is automatic, that is to say the original URL parsed by the playlist reader
-        let selectedUrl = index < 0 ? playlistReader.url : resolutionOptions[index].url
+        selectedResolutionIndex = index
+        playSelectedStream()
+    }
+    
+    /// Load the audio option for the given index, and play the corresponding audio variant url if successful.
+    /// - Parameters:
+    ///   - index: the index of the audio option, -1 for default.
+    public func openAudioOption(index: Int = -1) {
+        guard index < audioOptions.count,
+              index != selectedAudioIndex
+        else {
+            return
+        }
         
-        openStreamVariant(selectedUrl)
+        selectedAudioIndex = index
+        playSelectedStream()
     }
     
     /// Play or unpause media playback.
@@ -348,7 +414,12 @@ public class VideoPlayer: Sendable {
             ) { [weak self] time in
                 Task { @MainActor in
                     if let self {
-                        if let event = self.player.currentItem?.accessLog()?.events.last {
+                        let event = self.player.currentItem?.accessLog()?.events.last
+                        // Average bitrate is supposed to be the most representative value
+                        // but some HLS manifests only advertise bitrate.
+                        if let event, event.indicatedAverageBitrate > 0 {
+                            self.bitrate = event.indicatedAverageBitrate
+                        } else if let event, event.indicatedBitrate > 0 {
                             self.bitrate = event.indicatedBitrate
                         } else {
                             self.bitrate = 0
@@ -375,6 +446,23 @@ public class VideoPlayer: Sendable {
                 if !duration.isNaN {
                     Task { @MainActor in
                         self?.duration = duration
+                    }
+                }
+            }
+        }
+        
+        if mediaStatusObserver == nil, let currentItem = player.currentItem {
+            mediaStatusObserver = currentItem.observe(
+                \.status,
+                 options: [.new, .initial]
+            ) { [weak self] item, _ in
+                Task { @MainActor in
+                    self?.loading = item.status == .unknown
+                    if item.status == .failed, let error = item.error {
+                        print("Error: failed to load media: \(error.localizedDescription)")
+                        self?.error = error
+                    } else {
+                        self?.error = nil
                     }
                 }
             }
@@ -412,6 +500,8 @@ public class VideoPlayer: Sendable {
         timeObserver = nil
         durationObserver?.invalidate()
         durationObserver = nil
+        mediaStatusObserver?.invalidate()
+        mediaStatusObserver = nil
         bufferingObserver?.invalidate()
         bufferingObserver = nil
         
@@ -427,7 +517,7 @@ public class VideoPlayer: Sendable {
         cancelControlPanelTask()
         dismissControlPanelTask = Task {
             try? await Task.sleep(for: .seconds(10))
-            let videoIsPlaying = !paused && !hasReachedEnd && !buffering
+            let videoIsPlaying = error == nil && !loading && !paused && !hasReachedEnd && !buffering
             if !Task.isCancelled, videoIsPlaying {
                 hideControlPanel()
             }
