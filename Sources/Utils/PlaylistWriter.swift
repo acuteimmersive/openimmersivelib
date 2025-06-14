@@ -80,8 +80,6 @@ public actor PlaylistWriter {
     ///   - lines: the lines of the playlist file.
     ///   - resolution: the selected resolution variant.
     private func filterResolution(_ lines: inout [String], _ resolution: ResolutionOption) throws {
-        //TODO: throw an error if all the resolution options are thrown away
-        
         var filteredLines: [String] = []
         var skipNext = false
         
@@ -107,6 +105,9 @@ public actor PlaylistWriter {
         }
         
         lines = filteredLines
+        guard lines.contains(where: { $0.starts(with: "#EXT-X-STREAM-INF:") }) else {
+            throw PlaylistWriterError.ResolutionFilterError
+        }
     }
     
     /// Remove all the audio variants other than the one provided.
@@ -114,8 +115,6 @@ public actor PlaylistWriter {
     ///   - lines: the lines of the playlist file.
     ///   - audio: the selected audio variant.
     private func filterAudio(_ lines: inout [String], _ audio: AudioOption) throws {
-        //TODO: throw an error if all the audio options are thrown away
-        
         let uriSearch = /URI="(?<url>[^"]+)"/
         let uriMatches = { (line: String) -> Bool in
             if let uri = try? uriSearch.firstMatch(in: line) {
@@ -126,6 +125,9 @@ public actor PlaylistWriter {
         
         lines.removeAll { line in
             line.starts(with: "#EXT-X-MEDIA:TYPE=AUDIO") && !uriMatches(line)
+        }
+        guard lines.contains(where: { $0.starts(with: "#EXT-X-MEDIA:TYPE=AUDIO") }) else {
+            throw PlaylistWriterError.AudioFilterError
         }
     }
     
