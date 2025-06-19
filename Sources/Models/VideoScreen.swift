@@ -26,6 +26,7 @@ public class VideoScreen {
     /// Updates the video screen mesh with values from a VideoPlayer instance to resize it and start displaying its video media.
     /// - Parameters:
     ///   - videoPlayer: the VideoPlayer instance
+    ///   - projection: the projection type of the media
     public func update(source videoPlayer: VideoPlayer, projection: StreamModel.Projection) {
         switch projection {
         case .equirectangular(fieldOfView: _, force: _):
@@ -67,7 +68,8 @@ public class VideoScreen {
     /// Sets up the entity with a VideoPlayerComponent that renders the video natively.
     /// - Parameters:
     ///   - videoPlayer:the VideoPlayer instance
-    private func updateNativePlayer(_ videoPlayer: VideoPlayer, transform: Transform = Transform()) {
+    ///   - transform: the position of the entity (default identity)
+    private func updateNativePlayer(_ videoPlayer: VideoPlayer, transform: Transform = .identity) {
         let videoPlayerComponent = {
             var videoPlayerComponent = VideoPlayerComponent(avPlayer: videoPlayer.player)
             videoPlayerComponent.desiredViewingMode = .stereo
