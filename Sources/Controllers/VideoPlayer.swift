@@ -37,7 +37,7 @@ public class VideoPlayer: Sendable {
     /// The callback to execute when playback reaches the end of the video.
     public var playbackEndedAction: CustomAction?
     /// The aspect ratio of the current media (width / height) (equirectangular projection only).
-    private(set) public var aspectRatio: Float = 1.0
+    private(set) public var aspectRatio: Float?
     /// The horizontal field of view for the current media (equirectangular projection only).
     private(set) public var horizontalFieldOfView: Float = 180.0
     /// The vertical field of view for the current media (equirectangular projection only).
@@ -45,6 +45,7 @@ public class VideoPlayer: Sendable {
         get {
             // some 180/360 videos are originally encoded with non-square pixels, so don't use the aspect ratio for those.
             if self.horizontalFieldOfView >= 180.0 { return 180.0 }
+            let aspectRatio = self.aspectRatio ?? 1.0
             return max(0, min(180, self.horizontalFieldOfView / aspectRatio))
         }
     }
