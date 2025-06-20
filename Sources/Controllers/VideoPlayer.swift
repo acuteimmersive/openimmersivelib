@@ -125,7 +125,9 @@ public class VideoPlayer: Sendable {
     
     //MARK: Public methods
     /// Public initializer for visibility.
-    public init() {}
+    public init() {
+        configureAudio()
+    }
     
     /// Instruct the UI to reveal the control panel.
     public func showControlPanel() {
@@ -162,6 +164,21 @@ public class VideoPlayer: Sendable {
                 shouldShowPlaybackOptions.toggle()
             }
             restartControlPanelTask()
+        }
+    }
+    
+    /// Configures the audio session for video playback.
+    private func configureAudio() {
+        do {
+            // Configure the audio session for playback. Set the `moviePlayback` mode
+            // to reduce the audio's dynamic range to help normalize audio levels.
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo)
+            try session.setIntendedSpatialExperience(
+                .headTracked(soundStageSize: .automatic, anchoringStrategy: .automatic)
+            )
+        } catch {
+            print("Error: failed to configure audio session: \(error.localizedDescription)")
         }
     }
     
