@@ -8,14 +8,14 @@
 import CoreTransferable
 
 /// A representation for a spatial video selected from the Photos API
-struct SpatialVideo: Transferable {
-    enum Status {
+public struct SpatialVideo: Transferable {
+    public enum Status {
         case failed, ready
     }
-    let status: Status
-    let url: URL
+    public let status: Status
+    public let url: URL
 
-    static var transferRepresentation: some TransferRepresentation {
+    public static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(contentType: .movie) { movie in
             SentTransferredFile(movie.url)
         } importing: { received in
