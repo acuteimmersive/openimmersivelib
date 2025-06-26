@@ -9,7 +9,7 @@ import CoreTransferable
 
 /// A representation for a spatial video selected from the Photos API
 public struct SpatialVideo: Transferable {
-    public enum Status {
+    public enum Status: Sendable {
         case failed, ready
     }
     public let status: Status
