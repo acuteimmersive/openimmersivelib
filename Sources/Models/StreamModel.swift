@@ -27,16 +27,16 @@ public struct StreamModel: Codable {
     public var details: String
     /// URL to a media, whether local or streamed from a HLS server (m3u8).
     public var url: URL
-    /// The projection type of the media.
-    public var projection: Projection
+    /// The projection type of the media (will default to 180.0 degree equirectangular if nil).
+    public var projection: Projection?
     
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - title: the title of the video stream.
     ///   - details: a short description of the video stream.
     ///   - url: URL to a media, whether local or streamed from a server (m3u8).
-    ///   - projection: the projection type of the media (default 180.0 degree equirectangular).
-    public init(title: String, details: String, url: URL, projection: Projection = .equirectangular(fieldOfView: 180.0)) {
+    ///   - projection: the projection type of the media (default nil).
+    public init(title: String, details: String, url: URL, projection: Projection? = nil) {
         self.title = title
         self.details = details
         self.url = url

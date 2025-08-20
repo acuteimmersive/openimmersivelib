@@ -37,10 +37,12 @@ public struct FilePicker: View {
                 // but it would prevent playing the same file twice.
                 url.startAccessingSecurityScopedResource()
                 
+                let isAivuFile = url.lastPathComponent.hasSuffix(".aivu")
                 let stream = StreamModel(
                     title: url.lastPathComponent,
                     details: "From Local Files",
-                    url: url
+                    url: url,
+                    projection: isAivuFile ? .appleImmersive : nil
                 )
                 loadStreamAction(stream)
                 break
