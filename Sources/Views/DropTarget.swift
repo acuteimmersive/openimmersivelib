@@ -56,10 +56,12 @@ public struct DropTarget<Content: View>: View {
                 return false
             }
             
+            let isAivuFile = video.url.lastPathComponent.hasSuffix(".aivu")
             let stream = StreamModel(
                 title: video.url.lastPathComponent,
                 details: "From dropped video",
-                url: video.url
+                url: video.url,
+                projection: isAivuFile ? .appleImmersive : nil
             )
             loadStreamAction(stream)
             return true
