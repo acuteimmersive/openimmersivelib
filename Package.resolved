@@ -1,0 +1,42 @@
+{
+  "originHash" : "f88097d977cd2aa8e57140ccd96d87b15440a0c7a87d1b05a55998f661ea2efb",
+  "pins" : [
+    {
+      "identity" : "bytesparser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/dagronf/BytesParser",
+      "state" : {
+        "revision" : "a091513c4059d336c8cbf0b9485fcba63bcba83a",
+        "version" : "3.2.1"
+      }
+    },
+    {
+      "identity" : "dsfregex",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/dagronf/DSFRegex",
+      "state" : {
+        "revision" : "c576aab25f88bcb4b549862e6269b6f90b917e0c",
+        "version" : "4.0.0"
+      }
+    },
+    {
+      "identity" : "swiftsubtitles",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/dagronf/SwiftSubtitles",
+      "state" : {
+        "revision" : "485c6f1fc71235041198a8bb893fa22f807451a6",
+        "version" : "2.2.0"
+      }
+    },
+    {
+      "identity" : "tinycsv",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/dagronf/TinyCSV",
+      "state" : {
+        "revision" : "05d691ee7bab64f5ff075b97f47ef41d36a81f6f",
+        "version" : "1.0.1"
+      }
+    }
+  ],
+  "version" : 3
+}
