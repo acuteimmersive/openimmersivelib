@@ -71,6 +71,14 @@ public class VideoPlayer: Sendable {
     public var canChooseAudio: Bool {
         audioOptions.count > 1 && Config.shared.controlPanelShowAudioOptions
     }
+    /// The current volume of the underlying `AVPlayer`.
+    public var volume: Float {
+        get { player.volume }
+        set {
+            player.volume = newValue
+            restartControlPanelTask()
+        }
+    }
     
     /// The current time in seconds of the current video (0 if none).
     ///
@@ -531,7 +539,7 @@ public class VideoPlayer: Sendable {
     }
     
     /// Restarts a task with a 10-second timer to auto-hide the control panel.
-    private func restartControlPanelTask() {
+    public func restartControlPanelTask() {
         cancelControlPanelTask()
         dismissControlPanelTask = Task {
             try? await Task.sleep(for: .seconds(10))

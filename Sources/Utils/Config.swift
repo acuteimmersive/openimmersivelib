@@ -26,6 +26,8 @@ public final class Config: Sendable {
     public let controlPanelShowResolutionOptions: Bool
     /// Show or hide the control panel's audio selector for streams (Boolean).
     public let controlPanelShowAudioOptions: Bool
+    /// Show or hide the control panel's volume control (Boolean).
+    public let controlPanelShowVolume: Bool
     /// Tint for the scrubber (String): RGB or RGBA color in hexadecimal in the #RRGGBB or #RRGGBBAA format.
     public let controlPanelScrubberTint: Color
     /// Radius of the video screen's sphere in meters (Number): make sure it's large enough to fit the control panel.
@@ -60,6 +62,7 @@ public final class Config: Sendable {
         controlPanelShowBitrate = config["controlPanelShowBitrate"] as? Bool ?? true
         controlPanelShowResolutionOptions = config["controlPanelShowResolutionOptions"] as? Bool ?? true
         controlPanelShowAudioOptions = config["controlPanelShowAudioOptions"] as? Bool ?? true
+        controlPanelShowVolume = config["controlPanelShowVolume"] as? Bool ?? true
         if let controlPanelScrubberTintValue = config["controlPanelScrubberTint"] as? String,
            let color = Self.color(from: controlPanelScrubberTintValue) {
             controlPanelScrubberTint = color

@@ -42,19 +42,25 @@ public struct ControlPanel: View {
                 }
                 
                 VStack {
-                    HStack {
-                        Button("", systemImage: "chevron.backward") {
+                    HStack(spacing: 10) {
+                        Button {
                             closeAction?()
+                        } label: {
+                            Image(systemName: "chevron.backward")
+                                .padding(20)
                         }
-                        .controlSize(.extraLarge)
-                        .tint(.clear)
-                        .frame(width: 100)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.large)
                         
                         if let customButtons {
                             AnyView(customButtons($videoPlayer))
                         }
                         
                         MediaInfo(videoPlayer: $videoPlayer)
+                        
+                        if Config.shared.controlPanelShowVolume {
+                            VolumeControl(videoPlayer: $videoPlayer)
+                        }
                     }
                     
                     HStack {
@@ -65,7 +71,8 @@ public struct ControlPanel: View {
                         TimeText(videoPlayer: videoPlayer)
                     }
                 }
-                .padding()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
                 .glassBackgroundEffect()
             }
         }
@@ -108,6 +115,7 @@ public struct MediaInfo: View {
         .fixedSize(horizontal: false, vertical: true)
         .background(Color.black.opacity(0.5))
         .cornerRadius(30)
+        .shadow(color: Color.white.opacity(0.5), radius: 2)
     }
 }
 
@@ -132,8 +140,11 @@ public struct ResolutionToggle: View {
         let showBitrate = config.controlPanelShowBitrate && videoPlayer.bitrate > 0
         
         VStack {
-            Toggle("", systemImage: "gearshape.fill", isOn: showResolutionOptions)
+            Toggle(isOn: showResolutionOptions) {
+                Image(systemName: "gearshape.fill")
+            }
             .toggleStyle(.button)
+            .buttonBorderShape(.circle)
             
             if showBitrate {
                 BitrateReadout(videoPlayer: videoPlayer)
@@ -184,6 +195,73 @@ public struct BitrateReadout: View {
     }
 }
 
+/// A Volume control
+public struct VolumeControl: View {
+    /// The singleton video player control interface.
+    @Binding var videoPlayer: VideoPlayer
+    
+    /// `true` if the slide is visible to the user.
+    @State var showingSlider: Bool = false
+    
+    /// The current of the slider, which is synchronized to the AVPlayer's volume value.
+    @State var sliderValue: Float = 1
+    
+    public var imageName: String {
+        if sliderValue <= 0 {
+            "speaker.slash.fill"
+        } else if sliderValue < 0.34 {
+            "speaker.wave.1.fill"
+        } else if sliderValue < 0.67 {
+            "speaker.wave.2.fill"
+        } else {
+            "speaker.wave.3.fill"
+        }
+    }
+    
+    /// Public initializer for visibility.
+    /// - Parameters:
+    ///   - videoPlayer: the singleton video player control interface.
+    public init(videoPlayer: Binding<VideoPlayer>) {
+        self._videoPlayer = videoPlayer
+    }
+    
+    public var body: some View {
+        Toggle(isOn: $showingSlider.animation()) {
+            Image(systemName: imageName)
+                .padding(5)
+        }
+        .toggleStyle(.button)
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
+        .tint(.clear)
+        .background(alignment: .trailing) {
+            HStack {
+                if showingSlider {
+                    Slider(value: $sliderValue, in: 0...1)
+                        .frame(minWidth: 160)
+                        .shadow(radius: 2)
+                        .padding()
+                        .padding(.trailing, 60)
+                }
+            }
+            .background {
+                if showingSlider {
+                    Color.init(uiColor: #colorLiteral(red: 0.6354077483, green: 0.6147486437, blue: 0.6041808543, alpha: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 30))
+                }
+            }
+        }
+        .onAppear {
+            sliderValue = videoPlayer.volume
+        }
+        .onChange(of: showingSlider) { _, _ in
+            videoPlayer.restartControlPanelTask()
+        }
+        .onChange(of: sliderValue) { _, volume in
+            videoPlayer.volume = volume
+        }
+    }
+}
 
 /// A simple horizontal view presenting the user with video playback control buttons.
 public struct PlaybackButtons: View {
@@ -198,36 +276,40 @@ public struct PlaybackButtons: View {
     }
     
     public var body: some View {
-        HStack {
-            Button("", systemImage: "gobackward.15") {
+        HStack(alignment: .center) {
+            Button {
                 videoPlayer.minus15()
+            } label: {
+                Image(systemName: "gobackward.15")
+                    .padding(5)
             }
-            .controlSize(.extraLarge)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
             .tint(.clear)
-            .frame(width: 100)
             
-            if videoPlayer.paused {
-                Button("", systemImage: "play") {
+            Button {
+                if videoPlayer.paused {
                     videoPlayer.play()
-                }
-                .controlSize(.extraLarge)
-                .tint(.clear)
-                .frame(width: 100)
-            } else {
-                Button("", systemImage: "pause") {
+                } else {
                     videoPlayer.pause()
                 }
-                .controlSize(.extraLarge)
-                .tint(.clear)
-                .frame(width: 100)
+            } label: {
+                Image(systemName: videoPlayer.paused ? "play.fill" : "pause.fill")
+                    .padding(20)
             }
-            
-            Button("", systemImage: "goforward.15") {
-                videoPlayer.plus15()
-            }
+            .buttonBorderShape(.circle)
             .controlSize(.extraLarge)
             .tint(.clear)
-            .frame(width: 100)
+            
+            Button {
+                videoPlayer.plus15()
+            } label: {
+                Image(systemName: "goforward.15")
+                    .padding(5)
+            }
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .tint(.clear)
         }
     }
 }

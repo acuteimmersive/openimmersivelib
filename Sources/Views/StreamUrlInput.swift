@@ -42,10 +42,13 @@ public struct StreamUrlInput: View {
         .sheet(isPresented: $isSheetShowing) {
             VStack {
                 HStack {
-                    Button("", systemImage: "xmark", role: .cancel) {
+                    Button(role: .cancel) {
                         textfieldRawVal = ""
                         isSheetShowing = false
+                    } label: {
+                        Image(systemName: "xmark")
                     }
+                    .buttonBorderShape(.circle)
                     
                     Text("Enter or paste a HLS stream URL (.m3u/.m3u8)")
                         .font(.headline)
@@ -64,11 +67,14 @@ public struct StreamUrlInput: View {
                             loadStream()
                         }
                     
-                    Button("", systemImage: "list.clipboard") {
+                    Button {
                         if let str = UIPasteboard.general.string {
                             textfieldRawVal = str
                         }
+                    } label: {
+                        Image(systemName: "list.clipboard")
                     }
+                    .buttonBorderShape(.circle)
                 }
                 .padding()
                 
