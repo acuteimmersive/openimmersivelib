@@ -1,14 +1,14 @@
 //
-//  StreamModel.swift
+//  VideoItem.swift
 //  OpenImmersive
 //
 //  Created by Anthony Maës (Acute Immersive) on 9/25/24.
 //
 
-import Foundation
+import AVFoundation
 
-/// Simple structure describing a video stream.
-public struct StreamModel: Codable {
+/// Simple structure describing a video.
+public struct VideoItem: Codable {
     public enum Projection: Codable {
         /// Spherical projection of an equirectangular (or half equirectangular) frame. Use this for mono or MV-HEVC stereo VR180 & VR360 video.
         /// - Parameters:
@@ -21,10 +21,8 @@ public struct StreamModel: Codable {
         case appleImmersive
     }
     
-    /// The title of the video stream.
-    public var title: String
-    /// A short description of the video stream.
-    public var details: String
+    /// Dictionary of metadata values for the video. `commonIdentifierTitle` and `commonIdentifierDescription` are expected.
+    public var metadata: [AVMetadataIdentifier: String]
     /// URL to a media, whether local or streamed from a HLS server (m3u8).
     public var url: URL
     /// The projection type of the media (will default to 180.0 degree equirectangular if nil).
@@ -32,29 +30,27 @@ public struct StreamModel: Codable {
     
     /// Public initializer for visibility.
     /// - Parameters:
-    ///   - title: the title of the video stream.
-    ///   - details: a short description of the video stream.
-    ///   - url: URL to a media, whether local or streamed from a server (m3u8).
+    ///   - metadata: dictionary of metadata values for the video. `commonIdentifierTitle` and `commonIdentifierDescription` are expected.
+    ///   - url: URL to a media, whether local or streamed from a HLS server (m3u8).
     ///   - projection: the projection type of the media (default nil).
-    public init(title: String, details: String, url: URL, projection: Projection? = nil) {
-        self.title = title
-        self.details = details
+    public init(metadata: [AVMetadataIdentifier: String], url: URL, projection: Projection? = nil) {
+        self.metadata = metadata
         self.url = url
         self.projection = projection
     }
 }
 
-extension StreamModel: Identifiable {
+extension VideoItem: Identifiable {
     public var id: String { url.absoluteString }
 }
 
-extension StreamModel: Hashable {
+extension VideoItem: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
 }
 
-extension StreamModel: Equatable {
+extension VideoItem: Equatable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id
     }

@@ -42,19 +42,19 @@ public actor PlaylistWriter {
     
     /// Write a variant of the original playlist with the specified options.
     /// - Parameters:
-    ///   - resolutionOption: the optional resolution that should be the one to keep.
+    ///   - bitrateRung: the optional bitrate/resolution rung that should be the one to keep.
     ///   - audioOption: the optional audio that should be the one to keep.
     ///   - absoluteURLs: set to true to convert all URLs in the playlist to absolute URLs.
     ///   - completionAction: the optional callback to execute after writing the playlist file succeeds.
     /// - Returns: Data object with the filtered playlist.
-    public func makeVariant(withResolution resolutionOption: ResolutionOption? = nil,
+    public func makeVariant(withBitrateRung bitrateRung: BitrateRung? = nil,
                             withAudio audioOption: AudioOption? = nil,
                             absoluteURLs: Bool = false,
                             completionAction: ((Data) -> Void)? = nil) throws -> Data {
         var lines = rawText.components(separatedBy: .newlines)
         
-        if let resolutionOption {
-            try filterResolution(&lines, resolutionOption)
+        if let bitrateRung {
+            try filterResolution(&lines, bitrateRung)
         }
         
         if let audioOption {
@@ -79,7 +79,7 @@ public actor PlaylistWriter {
     /// - Parameters:
     ///   - lines: the lines of the playlist file.
     ///   - resolution: the selected resolution variant.
-    private func filterResolution(_ lines: inout [String], _ resolution: ResolutionOption) throws {
+    private func filterResolution(_ lines: inout [String], _ resolution: BitrateRung) throws {
         var filteredLines: [String] = []
         var skipNext = false
         

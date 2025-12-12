@@ -42,19 +42,25 @@ public struct ControlPanel: View {
                 }
                 
                 VStack {
-                    HStack {
-                        Button("", systemImage: "chevron.backward") {
+                    HStack(spacing: 10) {
+                        Button {
                             closeAction?()
+                        } label: {
+                            Image(systemName: "chevron.backward")
+                                .padding(20)
                         }
-                        .controlSize(.extraLarge)
-                        .tint(.clear)
-                        .frame(width: 100)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.large)
                         
                         if let customButtons {
                             AnyView(customButtons($videoPlayer))
                         }
                         
                         MediaInfo(videoPlayer: $videoPlayer)
+                        
+                        if Config.shared.controlPanelShowVolume {
+                            VolumeControl(videoPlayer: $videoPlayer)
+                        }
                     }
                     
                     HStack {
@@ -65,7 +71,8 @@ public struct ControlPanel: View {
                         TimeText(videoPlayer: videoPlayer)
                     }
                 }
-                .padding()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
                 .glassBackgroundEffect()
             }
         }
@@ -91,7 +98,7 @@ public struct MediaInfo: View {
                 Text(videoPlayer.title)
                     .font(.title)
                 
-                Text(videoPlayer.details)
+                Text(videoPlayer.description)
                     .font(.headline)
             }
             .multilineTextAlignment(.center)
@@ -108,6 +115,7 @@ public struct MediaInfo: View {
         .fixedSize(horizontal: false, vertical: true)
         .background(Color.black.opacity(0.5))
         .cornerRadius(30)
+        .shadow(color: Color.white.opacity(0.5), radius: 2)
     }
 }
 
@@ -125,15 +133,18 @@ public struct ResolutionToggle: View {
     
     public var body: some View {
         let config = Config.shared
-        let showResolutionOptions = Binding<Bool>(
+        let showPlaybackOptions = Binding<Bool>(
             get: { videoPlayer.shouldShowPlaybackOptions },
             set: { _ in videoPlayer.togglePlaybackOptions() }
         )
         let showBitrate = config.controlPanelShowBitrate && videoPlayer.bitrate > 0
         
         VStack {
-            Toggle("", systemImage: "gearshape.fill", isOn: showResolutionOptions)
+            Toggle(isOn: showPlaybackOptions) {
+                Image(systemName: "gearshape.fill")
+            }
             .toggleStyle(.button)
+            .buttonBorderShape(.circle)
             
             if showBitrate {
                 BitrateReadout(videoPlayer: videoPlayer)
@@ -143,7 +154,7 @@ public struct ResolutionToggle: View {
     }
 }
 
-/// A colored text view presenting the user with the current video stream's bitrate.
+/// A colored text view presenting the user with the current video's HLS stream bitrate.
 public struct BitrateReadout: View {
     /// The singleton video player control interface.
     var videoPlayer: VideoPlayer
@@ -156,7 +167,7 @@ public struct BitrateReadout: View {
     }
     
     public var body: some View {
-        let textColor = color(for: videoPlayer.bitrate, ladder: videoPlayer.resolutionOptions)
+        let textColor = color(for: videoPlayer.bitrate, ladder: videoPlayer.bitrateLadder)
             .opacity(0.8)
         
         Text("\(videoPlayer.bitrate/1_000_000, specifier: "%.1f") Mbps")
@@ -168,10 +179,10 @@ public struct BitrateReadout: View {
     /// Evaluates the font color for the bitrate label depending on bitrate value.
     /// - Parameters:
     ///   - bitrate: the bitrate value as a `Double`
-    ///   - ladder: the resolution options for the stream
+    ///   - ladder: the bitrate/resolution rungs for the HLS stream
     ///   - tolerance: the tolerance for color threshold (default 1.2Mbps)
-    /// - Returns: White if top bitrate for the stream, yellow if second best, orange if third best, red otherwise.
-    private func color(for bitrate: Double, ladder options: [ResolutionOption], tolerance: Int = 1_200_000) -> Color {
+    /// - Returns: White if top bitrate for the HLS stream, yellow if second best, orange if third best, red otherwise.
+    private func color(for bitrate: Double, ladder options: [BitrateRung], tolerance: Int = 1_200_000) -> Color {
         if options.count > 3 && bitrate < Double(options[2].bitrate - tolerance) {
             .red
         } else if options.count > 2 && bitrate < Double(options[1].bitrate - tolerance) {
@@ -184,6 +195,73 @@ public struct BitrateReadout: View {
     }
 }
 
+/// A Volume control
+public struct VolumeControl: View {
+    /// The singleton video player control interface.
+    @Binding var videoPlayer: VideoPlayer
+    
+    /// `true` if the slide is visible to the user.
+    @State var showingSlider: Bool = false
+    
+    /// The current of the slider, which is synchronized to the AVPlayer's volume value.
+    @State var sliderValue: Float = 1
+    
+    public var imageName: String {
+        if sliderValue <= 0 {
+            "speaker.slash.fill"
+        } else if sliderValue < 0.34 {
+            "speaker.wave.1.fill"
+        } else if sliderValue < 0.67 {
+            "speaker.wave.2.fill"
+        } else {
+            "speaker.wave.3.fill"
+        }
+    }
+    
+    /// Public initializer for visibility.
+    /// - Parameters:
+    ///   - videoPlayer: the singleton video player control interface.
+    public init(videoPlayer: Binding<VideoPlayer>) {
+        self._videoPlayer = videoPlayer
+    }
+    
+    public var body: some View {
+        Toggle(isOn: $showingSlider.animation()) {
+            Image(systemName: imageName)
+                .padding(5)
+        }
+        .toggleStyle(.button)
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
+        .tint(.clear)
+        .background(alignment: .trailing) {
+            HStack {
+                if showingSlider {
+                    Slider(value: $sliderValue, in: 0...1)
+                        .frame(minWidth: 160)
+                        .shadow(radius: 2)
+                        .padding()
+                        .padding(.trailing, 60)
+                }
+            }
+            .background {
+                if showingSlider {
+                    Color.init(uiColor: #colorLiteral(red: 0.6354077483, green: 0.6147486437, blue: 0.6041808543, alpha: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 30))
+                }
+            }
+        }
+        .onAppear {
+            sliderValue = videoPlayer.volume
+        }
+        .onChange(of: showingSlider) { _, _ in
+            videoPlayer.restartControlPanelTask()
+        }
+        .onChange(of: sliderValue) { _, volume in
+            videoPlayer.volume = volume
+        }
+    }
+}
 
 /// A simple horizontal view presenting the user with video playback control buttons.
 public struct PlaybackButtons: View {
@@ -198,36 +276,40 @@ public struct PlaybackButtons: View {
     }
     
     public var body: some View {
-        HStack {
-            Button("", systemImage: "gobackward.15") {
+        HStack(alignment: .center) {
+            Button {
                 videoPlayer.minus15()
+            } label: {
+                Image(systemName: "gobackward.15")
+                    .padding(5)
             }
-            .controlSize(.extraLarge)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
             .tint(.clear)
-            .frame(width: 100)
             
-            if videoPlayer.paused {
-                Button("", systemImage: "play") {
+            Button {
+                if videoPlayer.paused {
                     videoPlayer.play()
-                }
-                .controlSize(.extraLarge)
-                .tint(.clear)
-                .frame(width: 100)
-            } else {
-                Button("", systemImage: "pause") {
+                } else {
                     videoPlayer.pause()
                 }
-                .controlSize(.extraLarge)
-                .tint(.clear)
-                .frame(width: 100)
+            } label: {
+                Image(systemName: videoPlayer.paused ? "play.fill" : "pause.fill")
+                    .padding(20)
             }
-            
-            Button("", systemImage: "goforward.15") {
-                videoPlayer.plus15()
-            }
+            .buttonBorderShape(.circle)
             .controlSize(.extraLarge)
             .tint(.clear)
-            .frame(width: 100)
+            
+            Button {
+                videoPlayer.plus15()
+            } label: {
+                Image(systemName: "goforward.15")
+                    .padding(5)
+            }
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .tint(.clear)
         }
     }
 }
@@ -313,7 +395,7 @@ public struct TimeText: View {
     }
 }
 
-/// A row of buttons to select the resolution / quality of the video stream.
+/// A row of buttons to select the resolution / quality of the video's HLS stream.
 public struct VariantSelector: View {
     /// The singleton video player control interface.
     @Binding var videoPlayer: VideoPlayer
@@ -363,13 +445,13 @@ public struct VariantSelector: View {
             }
             
             if videoPlayer.canChooseResolution {
-                let options = videoPlayer.resolutionOptions
+                let options = videoPlayer.bitrateLadder
                 let zippedOptions = Array(zip(options.indices, options))
                 let isOn: (Int) -> Binding<Bool> = { index in
                     Binding {
-                        videoPlayer.selectedResolutionIndex == index
+                        videoPlayer.selectedBitrateRungIndex == index
                     } set: { _ in
-                        videoPlayer.openResolutionOption(index: index)
+                        videoPlayer.selectBitrateRung(index: index)
                     }
                 }
                 

@@ -18,10 +18,10 @@ public struct ImmersivePlayer: View {
     // This needs to be a @State otherwise the video doesn't load.
     @State private(set) var videoScreen = VideoScreen()
     
-    /// The stream for which the player was open.
+    /// The item for which the player was open.
     ///
     /// The current implementation assumes only one media per appearance of the ImmersivePlayer.
-    let selectedStream: StreamModel
+    let selectedItem: VideoItem
     
     /// The callback to execute when the user closes the immersive player.
     let closeAction: CustomAction?
@@ -37,13 +37,13 @@ public struct ImmersivePlayer: View {
     
     /// Public initializer for visibility.
     /// - Parameters:
-    ///   - selectedStream: the stream for which the player will be open.
+    ///   - selectedItem: the video item for which the player will be open.
     ///   - closeAction: the optional callback to execute when the user closes the immersive player.
     ///   - playbackEndedAction: the optional callback to execute when playback reaches the end of the video.
     ///   - customButtons: an optional view builder for custom buttons to add to the control panel.
     ///   - customAttachments: an optional list of view builders for custom attachments to add to the immersive player.
-    public init(selectedStream: StreamModel, closeAction: CustomAction? = nil, playbackEndedAction: CustomAction? = nil, customButtons: CustomViewBuilder? = nil, customAttachments: [CustomAttachment] = []) {
-        self.selectedStream = selectedStream
+    public init(selectedItem: VideoItem, closeAction: CustomAction? = nil, playbackEndedAction: CustomAction? = nil, customButtons: CustomViewBuilder? = nil, customAttachments: [CustomAttachment] = []) {
+        self.selectedItem = selectedItem
         self.closeAction = closeAction
         self.customButtons = customButtons
         self.customAttachments = customAttachments
@@ -149,11 +149,11 @@ public struct ImmersivePlayer: View {
             }
         }
         .onAppear {
-            videoPlayer.openStream(selectedStream)
+            videoPlayer.openItem(selectedItem)
             videoPlayer.showControlPanel()
             videoPlayer.play()
             
-            let projection = selectedStream.projection ?? .equirectangular(fieldOfView: 180)
+            let projection = selectedItem.projection ?? .equirectangular(fieldOfView: 180)
             videoScreen.update(source: videoPlayer, projection: projection)
         }
         .onDisappear {

@@ -22,19 +22,19 @@ public class PlaylistLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
         components.scheme = Config.shared.customHttpUrlScheme
         return components.url!
     }
-    /// The selected resolution/bitrate option, if any.
-    public var resolutionOption: ResolutionOption?
+    /// The selected bitrate/resolution rung, if any.
+    public var bitrateRung: BitrateRung?
     /// The selected audio language/format option, if any.
     public var audioOption: AudioOption?
     
     /// Public initializer for visibility.
     /// - Parameters:
     ///    - url: the URL of the HLS root playlist (.m3u8).
-    ///    - resolutionOption: the desired resolution option, as parsed from `PlaylistReader`.
+    ///    - bitrateRung: the desired bitrate/resolution rung, as parsed from `PlaylistReader`.
     ///    - audioOption: the desired audio option, as parsed from `PlaylistReader`.
-    public init(_ url: URL, resolutionOption: ResolutionOption? = nil, audioOption: AudioOption? = nil) {
+    public init(_ url: URL, bitrateRung: BitrateRung? = nil, audioOption: AudioOption? = nil) {
         self.url = url
-        self.resolutionOption = resolutionOption
+        self.bitrateRung = bitrateRung
         self.audioOption = audioOption
     }
     
@@ -56,7 +56,7 @@ public class PlaylistLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
             return false
         }
         let url = self.url
-        let resolution = self.resolutionOption
+        let resolution = self.bitrateRung
         let audio = self.audioOption
 
         Task {
@@ -76,7 +76,7 @@ public class PlaylistLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
                     
                     let writer = try PlaylistWriter(from: data, baseURL: url)
                     let filteredData = try await writer.makeVariant(
-                        withResolution: resolution,
+                        withBitrateRung: resolution,
                         withAudio: audio,
                         absoluteURLs: true
                     )

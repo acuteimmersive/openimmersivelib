@@ -16,15 +16,15 @@ public struct DropTarget<Content: View>: View {
     let content: () -> Content
     
     /// The callback to execute after a valid video has been dropped.
-    var loadStreamAction: StreamAction
+    var loadItemAction: VideoItemAction
     
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - content: the view builder for the view to nest.
-    ///   - loadStreamAction: the callback to execute after a file has been picked.
-    public init(@ViewBuilder content: @escaping () -> Content, loadStreamAction: @escaping StreamAction) {
+    ///   - loadItemAction: the callback to execute after a file has been picked.
+    public init(@ViewBuilder content: @escaping () -> Content, loadItemAction: @escaping VideoItemAction) {
         self.content = content
-        self.loadStreamAction = loadStreamAction
+        self.loadItemAction = loadItemAction
     }
     
     public var body: some View {
@@ -57,13 +57,15 @@ public struct DropTarget<Content: View>: View {
             }
             
             let isAivuFile = video.url.lastPathComponent.hasSuffix(".aivu")
-            let stream = StreamModel(
-                title: video.url.lastPathComponent,
-                details: "From dropped video",
+            let item = VideoItem(
+                metadata: [
+                    .commonIdentifierTitle: video.url.lastPathComponent,
+                    .commonIdentifierDescription: "From dropped video",
+                ],
                 url: video.url,
                 projection: isAivuFile ? .appleImmersive : nil
             )
-            loadStreamAction(stream)
+            loadItemAction(item)
             return true
         } isTargeted: { val in withAnimation { isTargeted = val } }
     }
@@ -72,7 +74,7 @@ public struct DropTarget<Content: View>: View {
 #Preview(windowStyle: .automatic) {
     DropTarget() {
         Color.clear
-    } loadStreamAction: { _ in
+    } loadItemAction: { _ in
         
     }
 }

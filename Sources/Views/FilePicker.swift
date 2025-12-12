@@ -14,13 +14,13 @@ public struct FilePicker: View {
     @State private var isFileImporterShowing = false
     
     /// The callback to execute after a file has been picked.
-    var loadStreamAction: StreamAction
+    var loadItemAction: VideoItemAction
     
     /// Public initializer for visibility.
     /// - Parameters:
-    ///   - loadStreamAction: the callback to execute after a file has been picked.
-    public init(loadStreamAction: @escaping StreamAction) {
-        self.loadStreamAction = loadStreamAction
+    ///   - loadItemAction: the callback to execute after a file has been picked.
+    public init(loadItemAction: @escaping VideoItemAction) {
+        self.loadItemAction = loadItemAction
     }
     
     public var body: some View {
@@ -38,13 +38,15 @@ public struct FilePicker: View {
                 url.startAccessingSecurityScopedResource()
                 
                 let isAivuFile = url.lastPathComponent.hasSuffix(".aivu")
-                let stream = StreamModel(
-                    title: url.lastPathComponent,
-                    details: "From Local Files",
+                let item = VideoItem(
+                    metadata: [
+                        .commonIdentifierTitle: url.lastPathComponent,
+                        .commonIdentifierDescription: "From Local Files",
+                    ],
                     url: url,
                     projection: isAivuFile ? .appleImmersive : nil
                 )
-                loadStreamAction(stream)
+                loadItemAction(item)
                 break
                 
             case .failure(let error):

@@ -1,5 +1,5 @@
 //
-//  ResolutionOption.swift
+//  BitrateRung.swift
 //  OpenImmersive
 //
 //  Created by Anthony Maës (Acute Immersive) on 11/16/24.
@@ -7,22 +7,22 @@
 
 import Foundation
 
-/// Simple structure describing a resolution option for an HLS video stream.
-public struct ResolutionOption: Codable, Sendable {
-    /// Pixel resolution of the video stream.
+/// Simple structure describing a bitrate/resolution rung for an HLS video stream with a bitrate ladder.
+public struct BitrateRung: Codable, Sendable {
+    /// Pixel resolution of the bitrate rung.
     public let size: CGSize
-    /// Average bitrate of the video stream.
+    /// Average bitrate of the bitrate rung.
     public let averageBitrate: Int
-    /// Peak bitrate of the video stream.
+    /// Peak bitrate of the bitrate rung.
     public let peakBitrate: Int
     /// URL to a m3u8 HLS media playlist file.
     public let url: URL
     
     /// Public initializer for visibility.
     /// - Parameters:
-    ///   - size: the pixel resolution of the video stream.
-    ///   - averageBitrate: the peak bitrate of the video stream.
-    ///   - peakBitrate: the peak bitrate of the video stream.
+    ///   - size: the pixel resolution of the bitrate rung.
+    ///   - averageBitrate: the peak bitrate of the bitrate rung.
+    ///   - peakBitrate: the peak bitrate of the bitrate rung.
     ///   - url: URL to a m3u8 HLS media playlist file.
     public init(size: CGSize, averageBitrate: Int, peakBitrate: Int, url: URL) {
         self.size = size
@@ -31,17 +31,17 @@ public struct ResolutionOption: Codable, Sendable {
         self.url = url
     }
     
-    /// A textual description of the Resolution Option.
+    /// A textual description of the Bitrate Rung.
     public var description: String {
         "\(resolutionString) (\(bitrateString))"
     }
     
-    /// The average bitrate of the Resolution Option if availble, or the peak bitrate as a fallback.
+    /// The average bitrate of the Bitrate Rung if availble, or the peak bitrate as a fallback.
     public var bitrate: Int {
         averageBitrate > 0 ? averageBitrate : peakBitrate
     }
     
-    /// A string value for the Resolution Option's peak bitrate.
+    /// A string value for the Bitrate Rung's peak bitrate.
     public var bitrateString: String {
         guard bitrate > 0 else {
             return ""
@@ -55,7 +55,7 @@ public struct ResolutionOption: Codable, Sendable {
         }
     }
     
-    /// A string value for the Resolution Option's pixel resolution.
+    /// A string value for the Bitrate Rung's pixel resolution.
     public var resolutionString: String {
         switch size.height {
         case 0..<500:
@@ -72,11 +72,11 @@ public struct ResolutionOption: Codable, Sendable {
     }
 }
 
-extension ResolutionOption: Identifiable {
+extension BitrateRung: Identifiable {
     public var id: String { url.absoluteString }
 }
 
-extension ResolutionOption: Hashable {
+extension BitrateRung: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(size.width)
         hasher.combine(size.height)
@@ -86,8 +86,8 @@ extension ResolutionOption: Hashable {
     }
 }
 
-extension ResolutionOption: Equatable {
-    public static func == (lhs: ResolutionOption, rhs: ResolutionOption) -> Bool {
+extension BitrateRung: Equatable {
+    public static func == (lhs: BitrateRung, rhs: BitrateRung) -> Bool {
         lhs.id == rhs.id &&
         lhs.size == rhs.size &&
         lhs.averageBitrate == rhs.averageBitrate &&
@@ -96,8 +96,8 @@ extension ResolutionOption: Equatable {
     }
 }
 
-extension ResolutionOption: Comparable {
-    public static func < (lhs: ResolutionOption, rhs: ResolutionOption) -> Bool {
+extension BitrateRung: Comparable {
+    public static func < (lhs: BitrateRung, rhs: BitrateRung) -> Bool {
         if lhs.size.height == rhs.size.height {
             if lhs.size.width == rhs.size.width {
                 if lhs.averageBitrate == rhs.averageBitrate {

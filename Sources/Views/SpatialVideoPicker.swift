@@ -14,13 +14,13 @@ public struct SpatialVideoPicker: View {
     @State private var selectedItem: PhotosPickerItem?
     
     /// The callback to execute after a valid spatial video has been picked.
-    var loadStreamAction: StreamAction
+    var loadItemAction: VideoItemAction
     
     /// Public initializer for visibility.
     /// - Parameters:
-    ///   - loadStreamAction: the callback to execute after a file has been picked. 
-    public init(loadStreamAction: @escaping StreamAction) {
-        self.loadStreamAction = loadStreamAction
+    ///   - loadItemAction: the callback to execute after a file has been picked. 
+    public init(loadItemAction: @escaping VideoItemAction) {
+        self.loadItemAction = loadItemAction
     }
     
     public var body: some View {
@@ -38,12 +38,14 @@ public struct SpatialVideoPicker: View {
                 do {
                     if let video = try await selectedItem?.loadTransferable(type: SpatialVideo.self),
                        video.status == .ready {
-                        let stream = StreamModel(
-                            title: video.url.lastPathComponent,
-                            details: "From Local Gallery",
+                        let item = VideoItem(
+                            metadata: [
+                                .commonIdentifierTitle: video.url.lastPathComponent,
+                                .commonIdentifierDescription: "From Local Gallery",
+                            ],
                             url: video.url
                         )
-                        loadStreamAction(stream)
+                        loadItemAction(item)
                     }
                 } catch {
                     print("Error: could not load SpatialVideo Transferable: \(error.localizedDescription)")

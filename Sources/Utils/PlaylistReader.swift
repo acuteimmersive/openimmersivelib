@@ -18,9 +18,9 @@ public actor PlaylistReader {
     public enum State {
         /// Waiting to access the data at the provided URL.
         case fetching
-        /// Resolution options could not be parsed from the provided URL.
+        /// Bitrate ladder could not be parsed from the provided URL.
         case error(error: Error)
-        /// Resolution options were successfully parsed from the playlist file at the provided URL.
+        /// Bitrate ladder was successfully parsed from the playlist file at the provided URL.
         case success
     }
     
@@ -33,9 +33,9 @@ public actor PlaylistReader {
     /// Text copy of the playlist.
     @MainActor
     private(set) public var rawText: String = ""
-    /// Resolution options parsed from the playlist resource at `url`.
+    /// Bitrate ladder parsed from the playlist resource at `url`.
     @MainActor
-    private(set) public var resolutions: [ResolutionOption] = []
+    private(set) public var bitrateLadder: [BitrateRung] = []
     /// AudioOptions parsed from the playest resource at `url`.
     @MainActor
     private(set) public var audios: [AudioOption] = []
@@ -93,7 +93,7 @@ public actor PlaylistReader {
             throw PlaylistReaderError.ParsingError
         }
         
-        async let parseResolutions: () = parseResolutions(from: text)
+        async let parseResolutions: () = parseBitrateLadder(from: text)
         async let parseAudioOptions: () = parseAudioOptions(from: text)
         async let setRawText = Task { @MainActor in
             rawText = text
@@ -103,11 +103,11 @@ public actor PlaylistReader {
         await (parseResolutions, parseAudioOptions, setRawText)
     }
     
-    /// Parses a list of Resolution Options from the playlist.
+    /// Parses the bitrate ladder from the playlist.
     /// - Parameters:
     ///   - text: text to be parsed, expected to be the contents of a m3u8 HLS media playlist file.
-    private func parseResolutions(from text: String) async {
-        var resolutionOptions: [ResolutionOption] = []
+    private func parseBitrateLadder(from text: String) async {
+        var bitrateRungs: [BitrateRung] = []
         
         let resolutionSearch = /RESOLUTION=(?<width>\d+)x(?<height>\d+),/
         let averageBandwidthSearch = /AVERAGE-BANDWIDTH=(?<averageBandwidth>\d+),/
@@ -128,18 +128,18 @@ public actor PlaylistReader {
                   let url = URL(string: lines[index + 1])
             else { continue }
             
-            let option = ResolutionOption(
+            let option = BitrateRung(
                 size: CGSize(width: width, height: height),
                 averageBitrate: averageBitrate,
                 peakBitrate: peakBitrate,
                 url: url
             )
         
-            resolutionOptions.append(option)
+            bitrateRungs.append(option)
         }
         
         Task { @MainActor in
-            resolutions = resolutionOptions.sorted()
+            bitrateLadder = bitrateRungs.sorted()
         }
     }
     
