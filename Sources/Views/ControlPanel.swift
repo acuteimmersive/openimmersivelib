@@ -38,25 +38,32 @@ public struct ControlPanel: View {
                     VariantSelector(videoPlayer: $videoPlayer)
                         .transition(.scale(0, anchor: .trailing))
                         .frame(minHeight: 0, alignment: .bottom)
-                        .padding()
+                        .padding(5)
                 }
                 
-                VStack {
-                    HStack(spacing: 10) {
-                        Button {
-                            closeAction?()
-                        } label: {
-                            Image(systemName: "chevron.backward")
-                                .padding(20)
+                VStack(spacing: 0) {
+                    HStack {
+                        if let closeAction {
+                            Button {
+                                closeAction()
+                            } label: {
+                                Image(systemName: "chevron.backward")
+                                    .offset(x: -1)
+                                    .padding(10)
+                            }
+                            .buttonBorderShape(.circle)
+                            .controlSize(.large)
                         }
-                        .buttonBorderShape(.circle)
-                        .controlSize(.large)
                         
                         if let customButtons {
                             AnyView(customButtons($videoPlayer))
                         }
                         
+                        let paddingLeft: CGFloat = closeAction != nil || customButtons != nil ? 0 : 60
+                        let paddingRight: CGFloat = Config.shared.controlPanelShowVolume ? 0 : 60
                         MediaInfo(videoPlayer: $videoPlayer)
+                            .padding(.leading, paddingLeft)
+                            .padding(.trailing, paddingRight)
                         
                         if Config.shared.controlPanelShowVolume {
                             VolumeControl(videoPlayer: $videoPlayer)
@@ -70,10 +77,12 @@ public struct ControlPanel: View {
                         
                         TimeText(videoPlayer: videoPlayer)
                     }
+                    .padding([.bottom, .trailing], 5)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 15)
+                .padding(.vertical, 5)
                 .glassBackgroundEffect()
+                .frame(maxWidth: CGFloat(Config.shared.controlPanelWidth))
             }
         }
     }
@@ -96,25 +105,24 @@ public struct MediaInfo: View {
             // Video title and details text
             VStack {
                 Text(videoPlayer.title)
-                    .font(.title)
+                    .font(.headline)
                 
                 Text(videoPlayer.description)
-                    .font(.headline)
+                    .font(.caption)
             }
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 120)
-            .padding(.vertical)
+            .padding(.horizontal, 45)
             .truncationMode(.tail)
             
             if videoPlayer.canChooseResolution || videoPlayer.canChooseAudio {
                 ResolutionToggle(videoPlayer: $videoPlayer)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 90, maxHeight: CGFloat(Config.shared.controlPanelMediaInfoMaxHeight))
+        .frame(maxWidth: .infinity, minHeight: 65, maxHeight: CGFloat(Config.shared.controlPanelMediaInfoMaxHeight))
         .fixedSize(horizontal: false, vertical: true)
         .background(Color.black.opacity(0.5))
-        .cornerRadius(30)
+        .cornerRadius(20)
         .shadow(color: Color.white.opacity(0.5), radius: 2)
     }
 }
@@ -144,13 +152,14 @@ public struct ResolutionToggle: View {
                 Image(systemName: "gearshape.fill")
             }
             .toggleStyle(.button)
+            .controlSize(.small)
             .buttonBorderShape(.circle)
             
             if showBitrate {
                 BitrateReadout(videoPlayer: videoPlayer)
             }
         }
-        .frame(width: 100)
+        .frame(width: 50)
     }
 }
 
@@ -170,9 +179,10 @@ public struct BitrateReadout: View {
         let textColor = color(for: videoPlayer.bitrate, ladder: videoPlayer.bitrateLadder)
             .opacity(0.8)
         
-        Text("\(videoPlayer.bitrate/1_000_000, specifier: "%.1f") Mbps")
-            .frame(width: 100)
-            .font(.caption.monospacedDigit())
+        let specifier = videoPlayer.bitrate >= 10_000_000 ? "%.0f" : "%.1f"
+        Text("\(videoPlayer.bitrate/1_000_000, specifier: specifier) Mbps")
+            .frame(width: 50)
+            .font(.system(size: 8).monospacedDigit())
             .foregroundStyle(textColor)
     }
 
@@ -232,16 +242,16 @@ public struct VolumeControl: View {
         }
         .toggleStyle(.button)
         .buttonBorderShape(.circle)
-        .controlSize(.large)
+        .controlSize(.regular)
         .tint(.clear)
         .background(alignment: .trailing) {
             HStack {
                 if showingSlider {
                     Slider(value: $sliderValue, in: 0...1)
-                        .frame(minWidth: 160)
+                        .controlSize(.small)
+                        .frame(width: 120)
                         .shadow(radius: 2)
-                        .padding()
-                        .padding(.trailing, 60)
+                        .padding(.init(top: 10, leading: 15, bottom: 10, trailing: 60))
                 }
             }
             .background {
@@ -281,7 +291,7 @@ public struct PlaybackButtons: View {
                 videoPlayer.minus15()
             } label: {
                 Image(systemName: "gobackward.15")
-                    .padding(5)
+                    .offset(y: -1)
             }
             .buttonBorderShape(.circle)
             .controlSize(.large)
@@ -295,7 +305,7 @@ public struct PlaybackButtons: View {
                 }
             } label: {
                 Image(systemName: videoPlayer.paused ? "play.fill" : "pause.fill")
-                    .padding(20)
+                    .padding(10)
             }
             .buttonBorderShape(.circle)
             .controlSize(.extraLarge)
@@ -305,7 +315,7 @@ public struct PlaybackButtons: View {
                 videoPlayer.plus15()
             } label: {
                 Image(systemName: "goforward.15")
-                    .padding(5)
+                    .offset(y: -1)
             }
             .buttonBorderShape(.circle)
             .controlSize(.large)
@@ -337,10 +347,9 @@ public struct Scrubber: View {
                 videoPlayer.scrubState = .scrubEnded
             }
         }
-        .controlSize(.extraLarge)
+        .controlSize(.regular)
         .tint(config.controlPanelScrubberTint)
         .background(Color.white.opacity(0.5), in: .capsule)
-        .padding()
     }
 }
 
@@ -358,9 +367,8 @@ public struct TimeText: View {
     
     public var body: some View {
         Text(timeString)
-            .font(.headline)
-            .monospacedDigit()
-            .frame(width: frameWidth)
+            .font(.caption).monospacedDigit()
+            .frame(width: frameWidth, alignment: .trailing)
     }
     
     /// The string representation of the current playback time and duration of the `VideoPlayer`'s current media.
@@ -383,15 +391,9 @@ public struct TimeText: View {
     }
     
     var frameWidth: CGFloat {
-        get {
-            if videoPlayer.duration >= 36_000 {
-                return 200
-            }
-            if videoPlayer.duration >= 3600 {
-                return 180
-            }
-            return 150
-        }
+        if videoPlayer.duration >= 36_000 { 120 }
+        else if videoPlayer.duration >= 3600 { 104 }
+        else { 80 }
     }
 }
 
@@ -423,9 +425,10 @@ public struct VariantSelector: View {
                 HStack {
                     Toggle(isOn: isOn(-1)) {
                         Text("Default")
-                            .font(.headline)
+                            .font(.subheadline)
                     }
                     .toggleStyle(.button)
+                    .controlSize(.small)
                     
                     ForEach(zippedOptions, id: \.0) { index, option in
                         Toggle(isOn: isOn(index)) {
@@ -440,6 +443,7 @@ public struct VariantSelector: View {
                             .padding(.vertical, -5)
                         }
                         .toggleStyle(.button)
+                        .controlSize(.small)
                     }
                 }
             }
@@ -458,19 +462,21 @@ public struct VariantSelector: View {
                 HStack {
                     Toggle(isOn: isOn(-1)) {
                         Text("Auto")
-                            .font(.headline)
+                            .font(.subheadline)
                     }
                     .toggleStyle(.button)
+                    .controlSize(.small)
                     
                     ForEach(zippedOptions, id: \.0) { index, option in
                         Toggle(isOn: isOn(index)) {
                             Text(option.resolutionString)
-                                .font(.subheadline)
-                            Text(option.bitrateString)
                                 .font(.caption)
+                            Text(option.bitrateString)
+                                .font(.caption2)
                                 .opacity(0.8)
                         }
                         .toggleStyle(.button)
+                        .controlSize(.small)
                     }
                 }
             }

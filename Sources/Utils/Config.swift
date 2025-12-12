@@ -12,6 +12,8 @@ import SwiftUI
 public final class Config: Sendable {
     /// URL scheme to substitute to http/https for loading HLS playlists (String): this is needed for selecting bandwidth or audio.
     public let customHttpUrlScheme: String
+    /// UI Point width of the control panel (Number).
+    public let controlPanelWidth: Float
     /// Vertical offset of the control panel in meters (Number): + is up, - is down.
     public let controlPanelVerticalOffset: Float
     /// Horizontal offset of the control panel in meters (Number): + is forward, - is backward.
@@ -55,10 +57,11 @@ public final class Config: Sendable {
         }
         
         customHttpUrlScheme = config["customHttpUrlScheme"] as? String ?? "openimmersive"
-        controlPanelVerticalOffset = config["controlPanelVerticalOffset"] as? Float ?? -0.5
-        controlPanelHorizontalOffset = config["controlPanelHorizontalOffset"] as? Float ?? 0.7
-        controlPanelTilt = config["controlPanelTilt"] as? Float ?? 12.0
-        controlPanelMediaInfoMaxHeight = config["controlPanelMediaInfoMaxHeight"] as? Float ?? 140
+        controlPanelWidth = config["controlPanelWidth"] as? Float ?? 680.0
+        controlPanelVerticalOffset = config["controlPanelVerticalOffset"] as? Float ?? -0.35
+        controlPanelHorizontalOffset = config["controlPanelHorizontalOffset"] as? Float ?? 0.5
+        controlPanelTilt = config["controlPanelTilt"] as? Float ?? 18.0
+        controlPanelMediaInfoMaxHeight = config["controlPanelMediaInfoMaxHeight"] as? Float ?? 100
         controlPanelShowBitrate = config["controlPanelShowBitrate"] as? Bool ?? true
         controlPanelShowBitrateOptions = config["controlPanelShowBitrateOptions"] as? Bool ?? true
         controlPanelShowAudioOptions = config["controlPanelShowAudioOptions"] as? Bool ?? true
