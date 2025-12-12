@@ -27,7 +27,7 @@ public class VideoScreen {
     /// - Parameters:
     ///   - videoPlayer: the VideoPlayer instance
     ///   - projection: the projection type of the media
-    public func update(source videoPlayer: VideoPlayer, projection: StreamModel.Projection) {
+    public func update(source videoPlayer: VideoPlayer, projection: VideoItem.Projection) {
         switch projection {
         case .equirectangular(fieldOfView: _, force: _):
             // updateSphere() must be called only once to prevent creating multiple VideoMaterial instances

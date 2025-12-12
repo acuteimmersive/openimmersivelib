@@ -20,11 +20,11 @@ public final class Config: Sendable {
     public let controlPanelTilt: Float
     /// Maximum height of the control panel's media info box (Number): title and details text will be truncated.
     public let controlPanelMediaInfoMaxHeight: Float
-    /// Show or hide the control panel's bitrate readout for streams (Boolean).
+    /// Show or hide the control panel's bitrate readout for HLS streams (Boolean).
     public let controlPanelShowBitrate: Bool
-    /// Show or hide the control panel's resolution selector for streams (Boolean).
-    public let controlPanelShowResolutionOptions: Bool
-    /// Show or hide the control panel's audio selector for streams (Boolean).
+    /// Show or hide the control panel's resolution selector for HLS streams (Boolean).
+    public let controlPanelShowBitrateOptions: Bool
+    /// Show or hide the control panel's audio selector for HLS streams (Boolean).
     public let controlPanelShowAudioOptions: Bool
     /// Show or hide the control panel's volume control (Boolean).
     public let controlPanelShowVolume: Bool
@@ -60,7 +60,7 @@ public final class Config: Sendable {
         controlPanelTilt = config["controlPanelTilt"] as? Float ?? 12.0
         controlPanelMediaInfoMaxHeight = config["controlPanelMediaInfoMaxHeight"] as? Float ?? 140
         controlPanelShowBitrate = config["controlPanelShowBitrate"] as? Bool ?? true
-        controlPanelShowResolutionOptions = config["controlPanelShowResolutionOptions"] as? Bool ?? true
+        controlPanelShowBitrateOptions = config["controlPanelShowBitrateOptions"] as? Bool ?? true
         controlPanelShowAudioOptions = config["controlPanelShowAudioOptions"] as? Bool ?? true
         controlPanelShowVolume = config["controlPanelShowVolume"] as? Bool ?? true
         if let controlPanelScrubberTintValue = config["controlPanelScrubberTint"] as? String,

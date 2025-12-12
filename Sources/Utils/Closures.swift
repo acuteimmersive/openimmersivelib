@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-public typealias StreamAction = ((StreamModel) -> Void)
+public typealias VideoItemAction = ((VideoItem) -> Void)
 public typealias CustomAction = (() -> Void)
 public typealias CustomViewBuilder = ((Binding<VideoPlayer>) -> any View)
 

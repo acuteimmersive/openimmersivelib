@@ -98,7 +98,7 @@ public struct MediaInfo: View {
                 Text(videoPlayer.title)
                     .font(.title)
                 
-                Text(videoPlayer.details)
+                Text(videoPlayer.description)
                     .font(.headline)
             }
             .multilineTextAlignment(.center)
@@ -133,14 +133,14 @@ public struct ResolutionToggle: View {
     
     public var body: some View {
         let config = Config.shared
-        let showResolutionOptions = Binding<Bool>(
+        let showPlaybackOptions = Binding<Bool>(
             get: { videoPlayer.shouldShowPlaybackOptions },
             set: { _ in videoPlayer.togglePlaybackOptions() }
         )
         let showBitrate = config.controlPanelShowBitrate && videoPlayer.bitrate > 0
         
         VStack {
-            Toggle(isOn: showResolutionOptions) {
+            Toggle(isOn: showPlaybackOptions) {
                 Image(systemName: "gearshape.fill")
             }
             .toggleStyle(.button)
@@ -154,7 +154,7 @@ public struct ResolutionToggle: View {
     }
 }
 
-/// A colored text view presenting the user with the current video stream's bitrate.
+/// A colored text view presenting the user with the current video's HLS stream bitrate.
 public struct BitrateReadout: View {
     /// The singleton video player control interface.
     var videoPlayer: VideoPlayer
@@ -167,7 +167,7 @@ public struct BitrateReadout: View {
     }
     
     public var body: some View {
-        let textColor = color(for: videoPlayer.bitrate, ladder: videoPlayer.resolutionOptions)
+        let textColor = color(for: videoPlayer.bitrate, ladder: videoPlayer.bitrateLadder)
             .opacity(0.8)
         
         Text("\(videoPlayer.bitrate/1_000_000, specifier: "%.1f") Mbps")
@@ -179,10 +179,10 @@ public struct BitrateReadout: View {
     /// Evaluates the font color for the bitrate label depending on bitrate value.
     /// - Parameters:
     ///   - bitrate: the bitrate value as a `Double`
-    ///   - ladder: the resolution options for the stream
+    ///   - ladder: the bitrate/resolution rungs for the HLS stream
     ///   - tolerance: the tolerance for color threshold (default 1.2Mbps)
-    /// - Returns: White if top bitrate for the stream, yellow if second best, orange if third best, red otherwise.
-    private func color(for bitrate: Double, ladder options: [ResolutionOption], tolerance: Int = 1_200_000) -> Color {
+    /// - Returns: White if top bitrate for the HLS stream, yellow if second best, orange if third best, red otherwise.
+    private func color(for bitrate: Double, ladder options: [BitrateRung], tolerance: Int = 1_200_000) -> Color {
         if options.count > 3 && bitrate < Double(options[2].bitrate - tolerance) {
             .red
         } else if options.count > 2 && bitrate < Double(options[1].bitrate - tolerance) {
@@ -395,7 +395,7 @@ public struct TimeText: View {
     }
 }
 
-/// A row of buttons to select the resolution / quality of the video stream.
+/// A row of buttons to select the resolution / quality of the video's HLS stream.
 public struct VariantSelector: View {
     /// The singleton video player control interface.
     @Binding var videoPlayer: VideoPlayer
@@ -445,13 +445,13 @@ public struct VariantSelector: View {
             }
             
             if videoPlayer.canChooseResolution {
-                let options = videoPlayer.resolutionOptions
+                let options = videoPlayer.bitrateLadder
                 let zippedOptions = Array(zip(options.indices, options))
                 let isOn: (Int) -> Binding<Bool> = { index in
                     Binding {
-                        videoPlayer.selectedResolutionIndex == index
+                        videoPlayer.selectedBitrateRungIndex == index
                     } set: { _ in
-                        videoPlayer.openResolutionOption(index: index)
+                        videoPlayer.selectBitrateRung(index: index)
                     }
                 }
                 

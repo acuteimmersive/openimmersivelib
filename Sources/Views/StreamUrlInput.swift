@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// A button revealing a sheet with a `TextField` and a clipboard paste button for manual input of stream URLs.
+/// A button revealing a sheet with a `TextField` and a clipboard paste button for manual input of HLS stream URLs.
 public struct StreamUrlInput: View {
     /// The visibility of the sheet.
     @State private var isSheetShowing: Bool = false
@@ -20,19 +20,19 @@ public struct StreamUrlInput: View {
         }
     }
     
-    /// The URL validity of the current value of the text field. The "Play Stream" button is only active if this is `true`.
+    /// The URL validity of the current value of the text field. The "Load Stream" button is only active if this is `true`.
     ///
     /// The URL verification is very lenient and will mostly catch obvious accidental inputs.
     @State private var isUrlValid: Bool = false
     
-    /// The callback to execute after a valid stream URL has been submitted.
-    var loadStreamAction: StreamAction
+    /// The callback to execute after a valid HLS stream URL has been submitted.
+    var loadItemAction: VideoItemAction
     
     /// Public initializer for visibility.
     /// - Parameters:
-    ///   - loadStreamAction: the callback to execute after a file has been picked.
-    public init(loadStreamAction: @escaping StreamAction) {
-        self.loadStreamAction = loadStreamAction
+    ///   - loadItemAction: the callback to execute after a file has been picked.
+    public init(loadItemAction: @escaping VideoItemAction) {
+        self.loadItemAction = loadItemAction
     }
     
     public var body: some View {
@@ -112,19 +112,21 @@ public struct StreamUrlInput: View {
         return url
     }
     
-    /// Loads the inputted stream for playback.
+    /// Loads the HLS stream for playback.
     private func loadStream() {
         guard let url = validateUrl() else {
             return
         }
         
-        let stream = StreamModel(
-            title: "HLS Stream",
-            details: url.absoluteString,
+        let item = VideoItem(
+            metadata: [
+                .commonIdentifierTitle: "HLS Stream",
+                .commonIdentifierDescription: url.absoluteString,
+            ],
             url: url
         )
         
-        loadStreamAction(stream)
+        loadItemAction(item)
     }
 }
 

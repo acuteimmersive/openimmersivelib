@@ -18,10 +18,12 @@ public class VideoPlayer: Sendable {
     //MARK: Variables accessible to the UI
     /// The title of the current video (empty string if none).
     private(set) public var title: String = ""
-    /// A short description of the current video (empty string if none).
-    private(set) public var details: String = ""
+    /// A short description of the current video, displayed under the title (empty string if none).
+    private(set) public var description: String = ""
     /// The url of the current video.
     private(set) public var url: URL?
+    /// The AVFoundation metadata of the current video.
+    private(set) public var metadata: [AVMetadataIdentifier: String] = [:]
     /// A playback error, if any.
     private(set) public var error: Error?
     /// The duration in seconds of the current video (0 if none).
@@ -51,23 +53,23 @@ public class VideoPlayer: Sendable {
     }
     /// The bitrate of the current video stream (0 if none), only available if streaming from a HLS server (m3u8).
     private(set) public var bitrate: Double = 0
-    /// Resolution options available for the video stream, only available if streaming from a HLS server (m3u8).
-    private(set) public var resolutionOptions: [ResolutionOption] = []
-    /// The currently selected resolution option index, if any. Only available if streaming from a HLS server (m3u8).
-    private(set) public var selectedResolutionIndex: Int = -1
+    /// Bitrate/resolution ladder available for the video stream, only available if streaming from a HLS server (m3u8).
+    private(set) public var bitrateLadder: [BitrateRung] = []
+    /// The currently selected bitrate rung index, if any. Only available if streaming from a HLS server (m3u8).
+    private(set) public var selectedBitrateRungIndex: Int = -1
     /// Audio options available for the video stream, only available if streaming from a HLS server (m3u8) and with separate audio playlists.
     private(set) public var audioOptions: [AudioOption] = []
-    /// The currently selected resolution option index, if any. Only available if streaming from a HLS server (m3u8).
+    /// The currently selected audio index, if any. Only available if streaming from a HLS server (m3u8).
     private(set) public var selectedAudioIndex: Int = -1
     /// `true` if the control panel should be visible to the user.
     private(set) public var shouldShowControlPanel: Bool = true
     /// `true` if the control panel should present resolution & audio options to the user.
     private(set) public var shouldShowPlaybackOptions: Bool = false
-    /// `true` if the stream has at least 2 resolution options and the custom configuration doesn't prevent user selection.
+    /// `true` if the HLS stream has a bitrate ladder with at least 2 rungs and the custom configuration doesn't prevent user selection.
     public var canChooseResolution: Bool {
-        resolutionOptions.count > 1 && Config.shared.controlPanelShowResolutionOptions
+        bitrateLadder.count > 1 && Config.shared.controlPanelShowBitrateOptions
     }
-    /// `true` if the stream has at least 2 audio options and the custom configuration doesn't prevent user selection.
+    /// `true` if the HLS stream has at least 2 audio options and the custom configuration doesn't prevent user selection.
     public var canChooseAudio: Bool {
         audioOptions.count > 1 && Config.shared.controlPanelShowAudioOptions
     }
@@ -167,7 +169,7 @@ public class VideoPlayer: Sendable {
     ///
     /// This will only do something if resolution or audio options are available.
     public func togglePlaybackOptions() {
-        if resolutionOptions.count > 1 || audioOptions.count > 1 {
+        if bitrateLadder.count > 1 || audioOptions.count > 1 {
             withAnimation {
                 shouldShowPlaybackOptions.toggle()
             }
@@ -190,18 +192,19 @@ public class VideoPlayer: Sendable {
         }
     }
     
-    /// Load the indicated stream (will stop playback).
+    /// Load the indicated item (will stop playback).
     /// - Parameters:
-    ///   - stream: The model describing the stream.
-    public func openStream(_ stream: StreamModel) {
+    ///   - item: The object describing the video.
+    public func openItem(_ item: VideoItem) {
         // Clean up the AVPlayer first, avoid bad states
         stop()
         
-        url = stream.url
-        title = stream.title
-        details = stream.details
+        url = item.url
+        title = item.metadata[.commonIdentifierTitle] ?? ""
+        description = item.metadata[.commonIdentifierDescription] ?? ""
+        metadata = item.metadata
         
-        guard let playerItem = makePlayerItem(stream.url) else {
+        guard let playerItem = makePlayerItem(item.url) else {
             return
         }
         player.replaceCurrentItem(with: playerItem)
@@ -209,7 +212,7 @@ public class VideoPlayer: Sendable {
         setupObservers()
         
         // If the video format is equirectangular, extract the field of view (horizontal & vertical) and aspect ratio
-        if case .equirectangular(let fieldOfView, let forceFov) = stream.projection {
+        if case .equirectangular(let fieldOfView, let forceFov) = item.projection {
             horizontalFieldOfView = max(0, min(360, fieldOfView))
             
             // Detect resolution and field of view, if available
@@ -226,17 +229,17 @@ public class VideoPlayer: Sendable {
             }
         }
         
-        // if streaming from HLS, attempt to retrieve the resolution options
+        // if streaming from HLS, attempt to retrieve the bitrate ladder
         playlistReader = nil
-        resolutionOptions = []
-        selectedResolutionIndex = -1
+        bitrateLadder = []
+        selectedBitrateRungIndex = -1
         selectedAudioIndex = -1
-        if stream.url.host() != nil {
-            playlistReader = PlaylistReader(url: stream.url) { @MainActor reader in
+        if item.url.host() != nil {
+            playlistReader = PlaylistReader(url: item.url) { @MainActor reader in
                 if case .success = reader.state {
-                    if reader.resolutions.count > 0 {
-                        self.resolutionOptions = reader.resolutions
-                        let defaultResolution = reader.resolutions.last!.size
+                    if reader.bitrateLadder.count > 0 {
+                        self.bitrateLadder = reader.bitrateLadder
+                        let defaultResolution = reader.bitrateLadder.last!.size
                         self.aspectRatio = Float(defaultResolution.width / defaultResolution.height)
                     }
                     
@@ -248,8 +251,8 @@ public class VideoPlayer: Sendable {
         }
     }
     
-    /// Load a stream variant for the currently selected resolution and audio options, preserving other states.
-    private func playSelectedStream() {
+    /// Load an HLS stream variant for the currently selected resolution and audio options, preserving other states.
+    private func playSelectedVariant() {
         guard let url,
               let playerItem = makePlayerItem(url) else {
             return
@@ -284,18 +287,18 @@ public class VideoPlayer: Sendable {
         }
         
         // if streaming from a HLS playlist, use a delegate to optionally restrict video or audio options
-        let resolutionOption = selectedResolutionIndex < 0 ? nil : resolutionOptions[selectedResolutionIndex]
+        let bitrateRung = selectedBitrateRungIndex < 0 ? nil : bitrateLadder[selectedBitrateRungIndex]
         let audioOption = selectedAudioIndex < 0 ? nil : audioOptions[selectedAudioIndex]
         
         // tricky: persist and reuse the delegate object for it to be used by AVFoundation
         let delegate = {
             if let delegate = self.delegate {
                 delegate.url = url
-                delegate.resolutionOption = resolutionOption
+                delegate.bitrateRung = bitrateRung
                 delegate.audioOption = audioOption
                 return delegate
             }
-            let delegate = PlaylistLoaderDelegate(url, resolutionOption: resolutionOption, audioOption: audioOption)
+            let delegate = PlaylistLoaderDelegate(url, bitrateRung: bitrateRung, audioOption: audioOption)
             self.delegate = delegate
             return delegate
         }()
@@ -303,22 +306,21 @@ public class VideoPlayer: Sendable {
         // tricky: replace http/https with a custom url scheme for the delegate object to be used by AVFoundation
         let playerAsset = AVURLAsset(url: delegate.customSchemeURL)
         playerAsset.resourceLoader.setDelegate(delegate, queue: .main)
-        let playerItem = AVPlayerItem(asset: playerAsset)
-        return playerItem
+        return AVPlayerItem(asset: playerAsset)
     }
     
-    /// Load the resolution option for the given index, and play the corresponding video variant url if successful.
+    /// Load the bitrate rung for the given index, and play the corresponding video variant url if successful.
     /// - Parameters:
-    ///   - index: the index of the resolution option, -1 for adaptive bitrate (default)
-    public func openResolutionOption(index: Int = -1) {
-        guard index < resolutionOptions.count,
-              index != selectedResolutionIndex
+    ///   - index: the index of the bitrate rung, -1 for adaptive bitrate (default)
+    public func selectBitrateRung(index: Int = -1) {
+        guard index < bitrateLadder.count,
+              index != selectedBitrateRungIndex
         else {
             return
         }
         
-        selectedResolutionIndex = index
-        playSelectedStream()
+        selectedBitrateRungIndex = index
+        playSelectedVariant()
     }
     
     /// Load the audio option for the given index, and play the corresponding audio variant url if successful.
@@ -332,7 +334,7 @@ public class VideoPlayer: Sendable {
         }
         
         selectedAudioIndex = index
-        playSelectedStream()
+        playSelectedVariant()
     }
     
     /// Play or unpause media playback.
@@ -411,7 +413,7 @@ public class VideoPlayer: Sendable {
         tearDownObservers()
         player.replaceCurrentItem(with: nil)
         title = ""
-        details = ""
+        description = ""
         duration = 0
         currentTime = 0
         bitrate = 0

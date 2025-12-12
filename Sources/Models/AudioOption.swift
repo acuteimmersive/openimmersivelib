@@ -30,7 +30,7 @@ public struct AudioOption: Codable, Sendable {
         self.language = language
     }
     
-    /// A textual description of the Resolution Option.
+    /// A textual description of the Audio Option.
     public var description: String {
         "\(languageString ?? name)"
     }
