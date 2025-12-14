@@ -8,6 +8,7 @@
 import AVFoundation
 
 /// Simple structure describing a video.
+/// Note: HLS manifest subtitle tracks are not parsed; provide subtitles as a sidecar file URL (local or remote).
 public struct VideoItem: Codable {
     public enum Projection: Codable {
         /// Spherical projection of an equirectangular (or half equirectangular) frame. Use this for mono or MV-HEVC stereo VR180 & VR360 video.
@@ -20,23 +21,27 @@ public struct VideoItem: Codable {
         /// Native rendering for Apple Immersive Video (AIVU).
         case appleImmersive
     }
-    
+
     /// Dictionary of metadata values for the video. `commonIdentifierTitle` and `commonIdentifierDescription` are expected.
     public var metadata: [AVMetadataIdentifier: String]
     /// URL to a media, whether local or streamed from a HLS server (m3u8).
     public var url: URL
     /// The projection type of the media (will default to 180.0 degree equirectangular if nil).
     public var projection: Projection?
-    
+    /// URL to a subtitle file (SRT, VTT, etc.), either local or remote.
+    public var subtitleURL: URL?
+
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - metadata: dictionary of metadata values for the video. `commonIdentifierTitle` and `commonIdentifierDescription` are expected.
     ///   - url: URL to a media, whether local or streamed from a HLS server (m3u8).
     ///   - projection: the projection type of the media (default nil).
-    public init(metadata: [AVMetadataIdentifier: String], url: URL, projection: Projection? = nil) {
+    ///   - subtitleURL: URL to a subtitle file (default nil).
+    public init(metadata: [AVMetadataIdentifier: String], url: URL, projection: Projection? = nil, subtitleURL: URL? = nil) {
         self.metadata = metadata
         self.url = url
         self.projection = projection
+        self.subtitleURL = subtitleURL
     }
 }
 

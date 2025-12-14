@@ -72,7 +72,10 @@ public struct ControlPanel: View {
                     
                     HStack {
                         PlaybackButtons(videoPlayer: videoPlayer)
-                        
+                        if videoPlayer.subtitlesAreAvailable {
+                            SubtitleToggle(videoPlayer: $videoPlayer)
+                        }
+
                         Scrubber(videoPlayer: $videoPlayer)
                         
                         TimeText(videoPlayer: videoPlayer)
@@ -160,6 +163,31 @@ public struct ResolutionToggle: View {
             }
         }
         .frame(width: 50)
+    }
+}
+
+/// A toggle to show or hide subtitles when available.
+public struct SubtitleToggle: View {
+    /// The singleton video player control interface.
+    @Binding var videoPlayer: VideoPlayer
+
+    /// Public initializer for visibility.
+    /// - Parameters:
+    ///   - videoPlayer: the binding to the singleton video player control interface.
+    public init(videoPlayer: Binding<VideoPlayer>) {
+        self._videoPlayer = videoPlayer
+    }
+
+    public var body: some View {
+        let isOn = Binding<Bool>(
+            get: { videoPlayer.subtitlesVisibilityEnabled },
+            set: { videoPlayer.subtitlesVisibilityEnabled = $0 }
+        )
+
+        Toggle("", systemImage: videoPlayer.subtitlesVisibilityEnabled ? "captions.bubble.fill" : "captions.bubble", isOn: isOn)
+            .toggleStyle(.button)
+            .accessibilityLabel("Subtitles")
+            .frame(width: 80)
     }
 }
 
@@ -489,6 +517,14 @@ public struct VariantSelector: View {
 //    ControlPanel(videoPlayer: .constant(VideoPlayer()))
 //}
 
+private struct ControlPanelPreviewContainer: View {
+    @State private var videoPlayer = VideoPlayer.previewWithSubtitles()
+    
+    var body: some View {
+        ControlPanel(videoPlayer: $videoPlayer)
+    }
+}
+
 #Preview {
     RealityView { content, attachments in
         if let entity = attachments.entity(for: "ControlPanel") {
@@ -496,7 +532,7 @@ public struct VariantSelector: View {
         }
     } attachments: {
         Attachment(id: "ControlPanel") {
-            ControlPanel(videoPlayer: .constant(VideoPlayer()))
+            ControlPanelPreviewContainer()
         }
     }
 }

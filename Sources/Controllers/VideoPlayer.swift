@@ -81,7 +81,25 @@ public class VideoPlayer: Sendable {
             restartControlPanelTask()
         }
     }
-    
+
+    /// Subtitle support
+    private(set) public var currentSubtitle: String? = nil
+    private(set) public var subtitleVersion: UInt64 = 0
+    private(set) public var subtitleController: SubtitleController? = nil
+    /// UI toggle to show/hide subtitles without unloading them.
+    public var subtitlesVisibilityEnabled: Bool = true {
+        didSet {
+            if !subtitlesVisibilityEnabled {
+                currentSubtitle = nil
+            } else if let controller = subtitleController {
+                currentSubtitle = controller.cue(at: currentTime)?.text
+            }
+        }
+    }
+    public var subtitlesAreAvailable: Bool {
+        subtitleController != nil
+    }
+
     /// The current time in seconds of the current video (0 if none).
     ///
     /// This variable is updated by video playback but can be overwritten by a scrubber, in conjunction with `scrubState`.
@@ -417,8 +435,65 @@ public class VideoPlayer: Sendable {
         duration = 0
         currentTime = 0
         bitrate = 0
+        subtitleController = nil
+        currentSubtitle = nil
+        subtitleVersion = 0
     }
-    
+
+    /// Load subtitles from a file URL.
+    /// HLS manifest subtitle tracks are not parsed; pass a sidecar file (local or remote).
+    /// - Parameters:
+    ///   - url: URL to the subtitle file (SRT, WebVTT, etc.)
+    /// - Throws: SubtitleParser.ParserError if the file cannot be parsed
+    public func loadSubtitles(from url: URL) throws {
+        let parser = SubtitleParser()
+        let cues = try parser.parse(fileURL: url)
+        subtitleController = SubtitleController(cues: cues)
+        currentSubtitle = nil
+        subtitleVersion = 0
+        // If video is already playing, update subtitle immediately
+        if subtitlesVisibilityEnabled, currentTime > 0 {
+            currentSubtitle = subtitleController?.cue(at: currentTime)?.text
+        }
+    }
+
+    public func clearSubtitles() {
+        subtitleController = nil
+        currentSubtitle = nil
+        subtitleVersion = 0
+    }
+
+    /// Load subtitles from a URL (supports both local and remote URLs).
+    /// HLS manifest subtitle tracks are not parsed; pass a sidecar file (local or remote).
+    /// - Parameters:
+    ///   - url: URL to the subtitle file (local file URL or remote http/https URL)
+    /// - Throws: SubtitleParser.ParserError if the file cannot be parsed
+    public func loadSubtitles(from url: URL) async throws {
+        let parser = SubtitleParser()
+        let cues = try await parser.parse(url: url)
+        subtitleController = SubtitleController(cues: cues)
+        // Reset current subtitle to trigger UI update
+        currentSubtitle = nil
+        // If video is already playing, update subtitle immediately
+        if subtitlesVisibilityEnabled, currentTime > 0 {
+            currentSubtitle = subtitleController?.cue(at: currentTime)?.text
+        }
+    }
+
+    #if DEBUG
+    /// Convenience factory for SwiftUI previews.
+    public static func previewWithSubtitles() -> VideoPlayer {
+        let player = VideoPlayer()
+        player.title = "Sample Video"
+        player.description = "Demo description with subtitles"
+        player.subtitleController = SubtitleController(cues: [
+            SubtitleCue(startTime: 0, endTime: 5, text: "Preview caption")
+        ])
+        player.subtitlesVisibilityEnabled = true
+        return player
+    }
+    #endif
+
     //MARK: Private methods
     /// Callback for the end of playback. Reveals the control panel if it was hidden.
     @objc private func onPlayReachedEnd() {
@@ -456,6 +531,11 @@ public class VideoPlayer: Sendable {
                         switch self.scrubState {
                         case .notScrubbing:
                             self.currentTime = time.seconds
+                            if self.subtitlesVisibilityEnabled, let controller = self.subtitleController {
+                                self.currentSubtitle = controller.cue(at: time.seconds)?.text
+                            } else if !self.subtitlesVisibilityEnabled {
+                                self.currentSubtitle = nil
+                            }
                             break
                         case .scrubStarted: return
                         case .scrubEnded: return
