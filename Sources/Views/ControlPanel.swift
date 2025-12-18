@@ -105,7 +105,7 @@ public struct MediaInfo: View {
             .truncationMode(.tail)
             
             HStack(spacing: 12) {
-                if videoPlayer.canChooseResolution || videoPlayer.canChooseAudio {
+                if videoPlayer.canChooseResolution || videoPlayer.canChooseAudio || videoPlayer.subtitlesOptionAvailable {
                     ResolutionToggle(videoPlayer: $videoPlayer)
                 }
             }
@@ -357,7 +357,7 @@ public struct VariantSelector: View {
     
     public var body: some View {
         VStack(alignment: .trailing) {
-            if videoPlayer.canChooseAudio {
+            if videoPlayer.canChooseAudio || videoPlayer.subtitlesOptionAvailable {
                 let options = videoPlayer.audioOptions
                 let zippedOptions = Array(zip(options.indices, options))
                 let isOn: (Int) -> Binding<Bool> = { index in
@@ -369,28 +369,30 @@ public struct VariantSelector: View {
                 }
                 
                 HStack {
-                    if videoPlayer.subtitlesAreAvailable {
+                    if videoPlayer.subtitlesOptionAvailable {
                         SubtitleToggle(videoPlayer: $videoPlayer)
                     }
-                    Toggle(isOn: isOn(-1)) {
-                        Text("Default")
-                            .font(.headline)
-                    }
-                    .toggleStyle(.button)
-                    
-                    ForEach(zippedOptions, id: \.0) { index, option in
-                        Toggle(isOn: isOn(index)) {
-                            VStack(spacing: -3) {
-                                Text(option.description)
-                                    .font(.caption)
-                                
-                                Text(option.groupId.capitalized)
-                                    .font(.caption2)
-                                    .opacity(0.8)
-                            }
-                            .padding(.vertical, -5)
+                    if videoPlayer.canChooseAudio {
+                        Toggle(isOn: isOn(-1)) {
+                            Text("Default")
+                                .font(.headline)
                         }
                         .toggleStyle(.button)
+                        
+                        ForEach(zippedOptions, id: \.0) { index, option in
+                            Toggle(isOn: isOn(index)) {
+                                VStack(spacing: -3) {
+                                    Text(option.description)
+                                        .font(.caption)
+                                    
+                                    Text(option.groupId.capitalized)
+                                        .font(.caption2)
+                                        .opacity(0.8)
+                                }
+                                .padding(.vertical, -5)
+                            }
+                            .toggleStyle(.button)
+                        }
                     }
                 }
             }

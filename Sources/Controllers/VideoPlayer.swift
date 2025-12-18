@@ -83,6 +83,8 @@ public class VideoPlayer: Sendable {
     }
 
     /// Subtitle support
+    /// Subtitle URL configured for the current item (if any).
+    private(set) public var configuredSubtitleURL: URL? = nil
     private(set) public var currentSubtitle: String? = nil
     private(set) public var subtitleVersion: UInt64 = 0
     private(set) public var subtitleController: SubtitleController? = nil
@@ -98,6 +100,11 @@ public class VideoPlayer: Sendable {
     }
     public var subtitlesAreAvailable: Bool {
         subtitleController != nil
+    }
+    
+    /// `true` if subtitles are configured for the current item (even if not yet loaded).
+    public var subtitlesOptionAvailable: Bool {
+        configuredSubtitleURL != nil || subtitlesAreAvailable
     }
 
     /// The current time in seconds of the current video (0 if none).
@@ -187,7 +194,7 @@ public class VideoPlayer: Sendable {
     ///
     /// This will only do something if resolution or audio options are available.
     public func togglePlaybackOptions() {
-        if bitrateLadder.count > 1 || audioOptions.count > 1 {
+        if canChooseResolution || canChooseAudio || subtitlesOptionAvailable {
             withAnimation {
                 shouldShowPlaybackOptions.toggle()
             }
@@ -218,6 +225,7 @@ public class VideoPlayer: Sendable {
         stop()
         
         url = item.url
+        configuredSubtitleURL = item.subtitleURL
         title = item.metadata[.commonIdentifierTitle] ?? ""
         description = item.metadata[.commonIdentifierDescription] ?? ""
         metadata = item.metadata
@@ -432,6 +440,7 @@ public class VideoPlayer: Sendable {
         player.replaceCurrentItem(with: nil)
         title = ""
         description = ""
+        configuredSubtitleURL = nil
         duration = 0
         currentTime = 0
         bitrate = 0
