@@ -492,6 +492,33 @@ public class VideoPlayer: Sendable {
         player.subtitlesVisibilityEnabled = true
         return player
     }
+
+    /// Convenience factory for SwiftUI previews with playback settings available.
+    public static func previewWithSubtitlesAndPlaybackOptions() -> VideoPlayer {
+        let player = previewWithSubtitles()
+        player.bitrateLadder = [
+            BitrateRung(
+                size: CGSize(width: 1280, height: 720),
+                averageBitrate: 2_000_000,
+                peakBitrate: 2_500_000,
+                url: URL(string: "https://example.com/720p.m3u8")!
+            ),
+            BitrateRung(
+                size: CGSize(width: 1920, height: 1080),
+                averageBitrate: 4_500_000,
+                peakBitrate: 5_500_000,
+                url: URL(string: "https://example.com/1080p.m3u8")!
+            )
+        ]
+        player.selectedBitrateRungIndex = 1
+        player.audioOptions = [
+            AudioOption(url: URL(string: "https://example.com/en.m3u8")!, groupId: "eng", name: "English", language: "en"),
+            AudioOption(url: URL(string: "https://example.com/es.m3u8")!, groupId: "spa", name: "Spanish", language: "es")
+        ]
+        player.selectedAudioIndex = 0
+        player.bitrate = 4_500_000
+        return player
+    }
     #endif
 
     //MARK: Private methods
