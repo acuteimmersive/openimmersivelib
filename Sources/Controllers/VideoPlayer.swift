@@ -81,7 +81,32 @@ public class VideoPlayer: Sendable {
             restartControlPanelTask()
         }
     }
+
+    /// Subtitle support
+    /// Subtitle URL configured for the current item (if any).
+    private(set) public var configuredSubtitleURL: URL? = nil
+    private(set) public var currentSubtitle: String? = nil
+    private(set) public var subtitleVersion: UInt64 = 0
+    private(set) public var subtitleController: SubtitleController? = nil
+    /// UI toggle to show/hide subtitles without unloading them.
+    public var subtitlesVisibilityEnabled: Bool = true {
+        didSet {
+            if !subtitlesVisibilityEnabled {
+                currentSubtitle = nil
+            } else if let controller = subtitleController {
+                currentSubtitle = controller.cue(at: currentTime)?.text
+            }
+        }
+    }
+    public var subtitlesAreAvailable: Bool {
+        subtitleController != nil
+    }
     
+    /// `true` if subtitles are configured for the current item (even if not yet loaded).
+    public var subtitlesOptionAvailable: Bool {
+        configuredSubtitleURL != nil || subtitlesAreAvailable
+    }
+
     /// The current time in seconds of the current video (0 if none).
     ///
     /// This variable is updated by video playback but can be overwritten by a scrubber, in conjunction with `scrubState`.
@@ -169,7 +194,7 @@ public class VideoPlayer: Sendable {
     ///
     /// This will only do something if resolution or audio options are available.
     public func togglePlaybackOptions() {
-        if bitrateLadder.count > 1 || audioOptions.count > 1 {
+        if canChooseResolution || canChooseAudio || subtitlesOptionAvailable {
             withAnimation {
                 shouldShowPlaybackOptions.toggle()
             }
@@ -200,6 +225,7 @@ public class VideoPlayer: Sendable {
         stop()
         
         url = item.url
+        configuredSubtitleURL = item.subtitleURL
         title = item.metadata[.commonIdentifierTitle] ?? ""
         description = item.metadata[.commonIdentifierDescription] ?? ""
         metadata = item.metadata
@@ -414,11 +440,96 @@ public class VideoPlayer: Sendable {
         player.replaceCurrentItem(with: nil)
         title = ""
         description = ""
+        configuredSubtitleURL = nil
         duration = 0
         currentTime = 0
         bitrate = 0
+        subtitleController = nil
+        currentSubtitle = nil
+        subtitleVersion = 0
     }
-    
+
+    /// Load subtitles from a file URL.
+    /// HLS manifest subtitle tracks are not parsed; pass a sidecar file (local or remote).
+    /// - Parameters:
+    ///   - url: URL to the subtitle file (SRT, WebVTT, etc.)
+    /// - Throws: SubtitleParser.ParserError if the file cannot be parsed
+    public func loadSubtitles(from url: URL) throws {
+        let parser = SubtitleParser()
+        let cues = try parser.parse(fileURL: url)
+        subtitleController = SubtitleController(cues: cues)
+        currentSubtitle = nil
+        subtitleVersion = 0
+        // If video is already playing, update subtitle immediately
+        if subtitlesVisibilityEnabled, currentTime > 0 {
+            currentSubtitle = subtitleController?.cue(at: currentTime)?.text
+        }
+    }
+
+    public func clearSubtitles() {
+        subtitleController = nil
+        currentSubtitle = nil
+        subtitleVersion = 0
+    }
+
+    /// Load subtitles from a URL (supports both local and remote URLs).
+    /// HLS manifest subtitle tracks are not parsed; pass a sidecar file (local or remote).
+    /// - Parameters:
+    ///   - url: URL to the subtitle file (local file URL or remote http/https URL)
+    /// - Throws: SubtitleParser.ParserError if the file cannot be parsed
+    public func loadSubtitles(from url: URL) async throws {
+        let parser = SubtitleParser()
+        let cues = try await parser.parse(url: url)
+        subtitleController = SubtitleController(cues: cues)
+        // Reset current subtitle to trigger UI update
+        currentSubtitle = nil
+        // If video is already playing, update subtitle immediately
+        if subtitlesVisibilityEnabled, currentTime > 0 {
+            currentSubtitle = subtitleController?.cue(at: currentTime)?.text
+        }
+    }
+
+    #if DEBUG
+    /// Convenience factory for SwiftUI previews.
+    public static func previewWithSubtitles() -> VideoPlayer {
+        let player = VideoPlayer()
+        player.title = "Sample Video"
+        player.description = "Demo description with subtitles"
+        player.subtitleController = SubtitleController(cues: [
+            SubtitleCue(startTime: 0, endTime: 5, text: "Preview caption")
+        ])
+        player.subtitlesVisibilityEnabled = true
+        return player
+    }
+
+    /// Convenience factory for SwiftUI previews with playback settings available.
+    public static func previewWithSubtitlesAndPlaybackOptions() -> VideoPlayer {
+        let player = previewWithSubtitles()
+        player.bitrateLadder = [
+            BitrateRung(
+                size: CGSize(width: 1280, height: 720),
+                averageBitrate: 2_000_000,
+                peakBitrate: 2_500_000,
+                url: URL(string: "https://example.com/720p.m3u8")!
+            ),
+            BitrateRung(
+                size: CGSize(width: 1920, height: 1080),
+                averageBitrate: 4_500_000,
+                peakBitrate: 5_500_000,
+                url: URL(string: "https://example.com/1080p.m3u8")!
+            )
+        ]
+        player.selectedBitrateRungIndex = 1
+        player.audioOptions = [
+            AudioOption(url: URL(string: "https://example.com/en.m3u8")!, groupId: "eng", name: "English", language: "en"),
+            AudioOption(url: URL(string: "https://example.com/es.m3u8")!, groupId: "spa", name: "Spanish", language: "es")
+        ]
+        player.selectedAudioIndex = 0
+        player.bitrate = 4_500_000
+        return player
+    }
+    #endif
+
     //MARK: Private methods
     /// Callback for the end of playback. Reveals the control panel if it was hidden.
     @objc private func onPlayReachedEnd() {
@@ -456,6 +567,11 @@ public class VideoPlayer: Sendable {
                         switch self.scrubState {
                         case .notScrubbing:
                             self.currentTime = time.seconds
+                            if self.subtitlesVisibilityEnabled, let controller = self.subtitleController {
+                                self.currentSubtitle = controller.cue(at: time.seconds)?.text
+                            } else if !self.subtitlesVisibilityEnabled {
+                                self.currentSubtitle = nil
+                            }
                             break
                         case .scrubStarted: return
                         case .scrubEnded: return

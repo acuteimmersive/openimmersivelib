@@ -1,0 +1,46 @@
+{
+  "subtitles": [
+    {
+      "index": 1,
+      "startTime": "00:00:00,000",
+      "endTime": "00:00:03,000",
+      "text": "Welcome to the immersive video experience"
+    },
+    {
+      "index": 2,
+      "startTime": "00:00:03,500",
+      "endTime": "00:00:07,000",
+      "text": "This is a JSON subtitle file"
+    },
+    {
+      "index": 3,
+      "startTime": "00:00:07,500",
+      "endTime": "00:00:11,000",
+      "text": "Testing the caption display system"
+    },
+    {
+      "index": 4,
+      "startTime": "00:00:11,500",
+      "endTime": "00:00:15,000",
+      "text": "Subtitles appear at the bottom of your view"
+    },
+    {
+      "index": 5,
+      "startTime": "00:00:15,500",
+      "endTime": "00:00:19,000",
+      "text": "Tap the CC button to load subtitle files"
+    },
+    {
+      "index": 6,
+      "startTime": "00:00:19,500",
+      "endTime": "00:00:23,000",
+      "text": "Supports multiple subtitle formats"
+    },
+    {
+      "index": 7,
+      "startTime": "00:00:23,500",
+      "endTime": "00:00:27,000",
+      "text": "Enjoy your immersive video!"
+    }
+  ]
+}

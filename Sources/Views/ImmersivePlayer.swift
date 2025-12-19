@@ -17,7 +17,12 @@ public struct ImmersivePlayer: View {
     /// The object managing the sphere or half-sphere displaying the video.
     // This needs to be a @State otherwise the video doesn't load.
     @State private(set) var videoScreen = VideoScreen()
-    
+
+    /// Reference to the subtitle entity for dynamic positioning
+    @State private var subtitleEntity: Entity?
+    @State private var lastSubtitleText: String?
+    @State private var lastControlPanelVisibility: Bool = true
+
     /// The item for which the player was open.
     ///
     /// The current implementation assumes only one media per appearance of the ImmersivePlayer.
@@ -32,6 +37,9 @@ public struct ImmersivePlayer: View {
     /// A custom button provided by the developer.
     let customButtons: CustomViewBuilder?
     
+    /// The callback to execute when the player is ready (provides access to VideoPlayer).
+    let onPlayerReady: ((VideoPlayer) -> Void)?
+
     /// The pose tracker ensuring the position of the control panel attachment is fixed relatively to the viewer.
     private let headTracker = HeadTracker()
     
@@ -42,11 +50,13 @@ public struct ImmersivePlayer: View {
     ///   - playbackEndedAction: the optional callback to execute when playback reaches the end of the video.
     ///   - customButtons: an optional view builder for custom buttons to add to the control panel.
     ///   - customAttachments: an optional list of view builders for custom attachments to add to the immersive player.
-    public init(selectedItem: VideoItem, closeAction: CustomAction? = nil, playbackEndedAction: CustomAction? = nil, customButtons: CustomViewBuilder? = nil, customAttachments: [CustomAttachment] = []) {
+    ///   - onPlayerReady: the optional callback to execute when the player is ready, providing access to the VideoPlayer instance.
+    public init(selectedItem: VideoItem, closeAction: CustomAction? = nil, playbackEndedAction: CustomAction? = nil, customButtons: CustomViewBuilder? = nil, customAttachments: [CustomAttachment] = [], onPlayerReady: ((VideoPlayer) -> Void)? = nil) {
         self.selectedItem = selectedItem
         self.closeAction = closeAction
         self.customButtons = customButtons
         self.customAttachments = customAttachments
+        self.onPlayerReady = onPlayerReady
         self.videoPlayer.playbackEndedAction = playbackEndedAction
     }
     
@@ -87,6 +97,30 @@ public struct ImmersivePlayer: View {
                         root.addChild(customView)
                     }
                 }
+
+                // Special handling for SubtitleOverlay - calculate orientation to face user
+                if let subtitleView = attachments.entity(for: "SubtitleOverlay") {
+                    subtitleView.name = "SubtitleOverlay"
+                    subtitleView.position = [0, -0.3, -0.5]
+
+                    // Calculate orientation to face the user's head
+                    if let headTransform = headTracker.transform {
+                        let headPosition = simd_make_float3(headTransform.columns.3)
+                        let subtitleWorldPos = root.position + subtitleView.position
+                        let directionToHead = normalize(headPosition - subtitleWorldPos)
+
+                        // Create a look-at quaternion (billboard facing the user)
+                        let up = simd_float3(0, 1, 0)
+                        let right = normalize(cross(up, directionToHead))
+                        let actualUp = cross(directionToHead, right)
+
+                        let rotationMatrix = simd_float3x3(right, actualUp, -directionToHead)
+                        subtitleView.orientation = simd_quatf(rotationMatrix)
+                    }
+
+                    root.addChild(subtitleView)
+                    subtitleEntity = subtitleView  // Store reference for update closure
+                }
             }
             
             // Show a an error message when playback fails
@@ -113,6 +147,19 @@ public struct ImmersivePlayer: View {
             
             if let errorView = attachments.entity(for: "ErrorView") {
                 errorView.isEnabled = videoPlayer.error != nil
+            }
+
+            // Only update subtitle transform when the active cue or panel visibility changes
+            let subtitleChanged = videoPlayer.currentSubtitle != lastSubtitleText
+            let visibilityChanged = videoPlayer.shouldShowControlPanel != lastControlPanelVisibility
+            if let subtitleView = subtitleEntity, subtitleChanged || visibilityChanged {
+                if videoPlayer.shouldShowControlPanel {
+                    subtitleView.position = [0, -0.2, -0.7]
+                } else {
+                    subtitleView.position = [0, -0.3, -0.5]
+                }
+                lastSubtitleText = videoPlayer.currentSubtitle
+                lastControlPanelVisibility = videoPlayer.shouldShowControlPanel
             }
         } placeholder: {
             ProgressView()
@@ -147,14 +194,32 @@ public struct ImmersivePlayer: View {
                         .animation(.easeInOut(duration: 0.3))
                 }
             }
+
+            Attachment(id: "SubtitleOverlay") {
+                SubtitleOverlay(videoPlayer: videoPlayer)
+            }
         }
         .onAppear {
             videoPlayer.openItem(selectedItem)
             videoPlayer.showControlPanel()
             videoPlayer.play()
-            
+
             let projection = selectedItem.projection ?? .equirectangular(fieldOfView: 180)
             videoScreen.update(source: videoPlayer, projection: projection)
+
+            // Load subtitles if configured
+            if let subtitleURL = selectedItem.subtitleURL {
+                Task {
+                    do {
+                        try await videoPlayer.loadSubtitles(from: subtitleURL)
+                    } catch {
+                        print("Failed to load subtitles: \(error.localizedDescription)")
+                    }
+                }
+            }
+
+            // Notify that player is ready
+            onPlayerReady?(videoPlayer)
         }
         .onDisappear {
             videoPlayer.stop()
