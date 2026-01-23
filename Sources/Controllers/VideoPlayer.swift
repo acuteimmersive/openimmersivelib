@@ -102,7 +102,6 @@ public class VideoPlayer: Sendable {
               break
           case .scrubStarted:
               cancelControlPanelTask()
-              break
           case .scrubEnded:
               let seekTime = CMTime(seconds: currentTime, preferredTimescale: 1000)
               player.seek(to: seekTime) { [weak self] finished in
@@ -115,7 +114,6 @@ public class VideoPlayer: Sendable {
                   }
               }
               hasReachedEnd = false
-              break
           }
        }
     }

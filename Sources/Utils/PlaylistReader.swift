@@ -128,7 +128,7 @@ public actor PlaylistReader {
                   let url = URL(string: lines[index + 1])
             else { continue }
             
-            let option = BitrateRung(
+            let option = await BitrateRung(
                 size: CGSize(width: width, height: height),
                 averageBitrate: averageBitrate,
                 peakBitrate: peakBitrate,
@@ -173,7 +173,7 @@ public actor PlaylistReader {
                 name = String(match.name)
             }
             
-            let option = AudioOption(
+            let option = await AudioOption(
                 url: url,
                 groupId: String(groupId.groupId),
                 name: name,
