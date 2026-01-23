@@ -13,20 +13,30 @@ public struct SpatialVideoPicker: View {
     /// The currently selected item, if any.
     @State private var selectedItem: PhotosPickerItem?
     
+    /// Whether the picker should show spatial videos only.
+    let spatialVideosOnly: Bool
+    
     /// The callback to execute after a valid spatial video has been picked.
-    var loadItemAction: VideoItemAction
+    let loadItemAction: VideoItemAction
+    
+    /// The Photos picker filter to use based on `spatialVideosOnly`.
+    public var filter: PHPickerFilter {
+        spatialVideosOnly ? .all(of: [.spatialMedia, .not(.images)]) : .videos
+    }
     
     /// Public initializer for visibility.
     /// - Parameters:
-    ///   - loadItemAction: the callback to execute after a file has been picked. 
-    public init(loadItemAction: @escaping VideoItemAction) {
+    ///  - spatialVideosOnly: true if the picker should only show spatial videos, false to show all videos.
+    ///  - loadItemAction: the callback to execute after a file has been picked.
+    public init(spatialVideosOnly: Bool = true, loadItemAction: @escaping VideoItemAction) {
+        self.spatialVideosOnly = spatialVideosOnly
         self.loadItemAction = loadItemAction
     }
     
     public var body: some View {
         PhotosPicker(
             selection: $selectedItem,
-            matching: .all(of: [.spatialMedia, .not(.images)]),
+            matching: filter,
             preferredItemEncoding: .current
         ) {
             Label("Open from Gallery", systemImage: "photo.on.rectangle.angled.fill")

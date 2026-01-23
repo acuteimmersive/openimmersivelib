@@ -15,6 +15,16 @@ import RealityKit
 @MainActor
 @Observable
 public class VideoPlayer: Sendable {
+    //MARK: Video Player and Video Renderer
+    /// The video player.
+    public let player = AVPlayer()
+    /// The APMP tag injector used in video streams that are frame-packed side by side or over under.
+    private var injector: APMPInjector?
+    /// The video renderer to use for media that are frame-packed side by side or over under.
+    public var renderer: AVSampleBufferVideoRenderer? {
+        injector?.renderer
+    }
+    
     //MARK: Variables accessible to the UI
     /// The title of the current video (empty string if none).
     private(set) public var title: String = ""
@@ -24,6 +34,10 @@ public class VideoPlayer: Sendable {
     private(set) public var url: URL?
     /// The AVFoundation metadata of the current video.
     private(set) public var metadata: [AVMetadataIdentifier: String] = [:]
+    /// The frame packing type of the video media, if any.
+    private(set) public var framePacking: VideoItem.FramePacking = .none
+    /// The projection type of the video media, defaults to VR180.
+    private(set) public var projection: VideoItem.Projection = .equirectangular(fieldOfView: 180)
     /// A playback error, if any.
     private(set) public var error: Error?
     /// The duration in seconds of the current video (0 if none).
@@ -103,15 +117,15 @@ public class VideoPlayer: Sendable {
           case .scrubStarted:
               cancelControlPanelTask()
           case .scrubEnded:
+              renderer?.flush()
               let seekTime = CMTime(seconds: currentTime, preferredTimescale: 1000)
               player.seek(to: seekTime) { [weak self] finished in
                   guard finished else {
                       return
                   }
-                  Task { @MainActor in
-                      self?.scrubState = .notScrubbing
-                      self?.restartControlPanelTask()
-                  }
+                  self?.renderer?.flush()
+                  self?.scrubState = .notScrubbing
+                  self?.restartControlPanelTask()
               }
               hasReachedEnd = false
           }
@@ -119,6 +133,8 @@ public class VideoPlayer: Sendable {
     }
     
     //MARK: Private variables
+    private var displayLink: CADisplayLink?
+    private var videoOutput: AVPlayerItemVideoOutput?
     private var timeObserver: Any?
     private var durationObserver: NSKeyValueObservation?
     private var mediaStatusObserver: NSKeyValueObservation?
@@ -126,10 +142,6 @@ public class VideoPlayer: Sendable {
     private var dismissControlPanelTask: Task<Void, Never>?
     private var playlistReader: PlaylistReader?
     private var delegate: PlaylistLoaderDelegate?
-    
-    //MARK: Immutable variables
-    /// The video player
-    public let player = AVPlayer()
     
     //MARK: Public methods
     /// Public initializer for visibility.
@@ -201,6 +213,8 @@ public class VideoPlayer: Sendable {
         title = item.metadata[.commonIdentifierTitle] ?? ""
         description = item.metadata[.commonIdentifierDescription] ?? ""
         metadata = item.metadata
+        projection = item.projection ?? .equirectangular(fieldOfView: 180)
+        framePacking = item.framePacking
         
         guard let playerItem = makePlayerItem(item.url) else {
             return
@@ -208,14 +222,18 @@ public class VideoPlayer: Sendable {
         player.replaceCurrentItem(with: playerItem)
         scrubState = .notScrubbing
         setupObservers()
+        if framePacking != .none {
+            setupInjector(playerItem, packing: framePacking, projection: projection)
+        }
         
         // If the video format is equirectangular, extract the field of view (horizontal & vertical) and aspect ratio
-        if case .equirectangular(let fieldOfView, let forceFov) = item.projection {
+        if case .equirectangular(let fieldOfView, let forceFov) = projection {
             horizontalFieldOfView = max(0, min(360, fieldOfView))
             
             // Detect resolution and field of view, if available
-            Task { [self] in
-                guard let asset = playerItem.asset as? AVURLAsset,
+            Task { [weak self] in
+                guard let self,
+                      let asset = playerItem.asset as? AVURLAsset,
                       let (resolution, horizontalFieldOfView) =
                         await VideoTools.getVideoDimensions(asset: asset) else {
                     return
@@ -340,7 +358,13 @@ public class VideoPlayer: Sendable {
     /// If playback has reached the end of the video (`hasReachedEnd` is true), play from the beginning.
     public func play() {
         if hasReachedEnd {
-            player.seek(to: CMTime.zero)
+            renderer?.flush()
+            player.seek(to: CMTime.zero) { [weak self] finished in
+                guard finished else {
+                    return
+                }
+                self?.renderer?.flush()
+            }
         }
         player.play()
         paused = false
@@ -365,8 +389,14 @@ public class VideoPlayer: Sendable {
     public func seek(to time: CMTime,
                      toleranceBefore: CMTime = CMTime.positiveInfinity,
                      toleranceAfter: CMTime = CMTime.positiveInfinity) {
+        renderer?.flush()
         hasReachedEnd = false
-        player.seek(to: time, toleranceBefore: toleranceBefore, toleranceAfter: toleranceAfter)
+        player.seek(to: time, toleranceBefore: toleranceBefore, toleranceAfter: toleranceAfter) { [weak self] finished in
+            guard finished else {
+                return
+            }
+            self?.renderer?.flush()
+        }
         restartControlPanelTask()
     }
     
@@ -409,6 +439,7 @@ public class VideoPlayer: Sendable {
     /// Stop media playback and unload the current media.
     public func stop() {
         tearDownObservers()
+        tearDownInjector()
         player.replaceCurrentItem(with: nil)
         title = ""
         description = ""
@@ -420,16 +451,60 @@ public class VideoPlayer: Sendable {
     //MARK: Private methods
     /// Callback for the end of playback. Reveals the control panel if it was hidden.
     @objc private func onPlayReachedEnd() {
-        Task { @MainActor in
-            hasReachedEnd = true
-            paused = true
-            showControlPanel()
-            self.playbackEndedAction?()
+        hasReachedEnd = true
+        paused = true
+        showControlPanel()
+        self.playbackEndedAction?()
+    }
+    
+    /// Set up the APMP injector and display link timer for frame packed media.
+    private func setupInjector(_ playerItem: AVPlayerItem, packing: VideoItem.FramePacking, projection: VideoItem.Projection) {
+        do {
+            try injector = try APMPInjector(packing: packing, projection: projection)
+        } catch {
+            print("APMP Injector initialization failed: \(error)")
+        }
+        
+        videoOutput = {
+            let videoOutput = AVPlayerItemVideoOutput()
+            playerItem.add(videoOutput)
+            return videoOutput
+        }()
+        
+        displayLink = {
+            let displayLink = CADisplayLink(target: self, selector: #selector(tick))
+            displayLink.add(to: .main, forMode: .common)
+            return displayLink
+        }()
+    }
+    
+    /// Callback from the display link. This will execute for each display frame, which may be a different rate from the video.
+    @objc private func tick(_ link: CADisplayLink) {
+        guard framePacking != .none, let videoOutput, let injector else {
+            return
+        }
+        
+        let itemTime = videoOutput.itemTime(forHostTime: link.targetTimestamp)
+        do {
+            let result = try injector.processFrame(
+                videoOutput: videoOutput,
+                at: itemTime
+            )
+        } catch {
+            print("Frame processing failed: \(error)")
         }
     }
     
-    // Observers are needed to extract the current playback time and total duration of the media
-    // Tricky: the observer callback closures must capture a weak self for safety, and execute on the MainActor
+    /// Tear down the objects set up in `setupInjector()` and invalidate the display link callbacks.
+    private func tearDownInjector() {
+        displayLink?.invalidate()
+        renderer?.flush()
+        
+        displayLink = nil
+        videoOutput = nil
+        injector = nil
+    }
+    
     /// Set up observers to register current media duration, current playback time, current bitrate, playback end event.
     private func setupObservers() {
         if timeObserver == nil {
@@ -438,27 +513,25 @@ public class VideoPlayer: Sendable {
                 forInterval: interval,
                 queue: .main
             ) { [weak self] time in
-                Task { @MainActor in
-                    if let self {
-                        let event = self.player.currentItem?.accessLog()?.events.last
-                        // Average bitrate is supposed to be the most representative value
-                        // but some HLS manifests only advertise bitrate.
-                        if let event, event.indicatedAverageBitrate > 0 {
-                            self.bitrate = event.indicatedAverageBitrate
-                        } else if let event, event.indicatedBitrate > 0 {
-                            self.bitrate = event.indicatedBitrate
-                        } else {
-                            self.bitrate = 0
-                        }
-                        
-                        switch self.scrubState {
-                        case .notScrubbing:
-                            self.currentTime = time.seconds
-                            break
-                        case .scrubStarted: return
-                        case .scrubEnded: return
-                        }
-                    }
+                guard let self else { return }
+                
+                let event = self.player.currentItem?.accessLog()?.events.last
+                // Average bitrate is supposed to be the most representative value
+                // but some HLS manifests only advertise bitrate.
+                if let event, event.indicatedAverageBitrate > 0 {
+                    self.bitrate = event.indicatedAverageBitrate
+                } else if let event, event.indicatedBitrate > 0 {
+                    self.bitrate = event.indicatedBitrate
+                } else {
+                    self.bitrate = 0
+                }
+                
+                switch self.scrubState {
+                case .notScrubbing:
+                    self.currentTime = time.seconds
+                    break
+                case .scrubStarted: return
+                case .scrubEnded: return
                 }
             }
         }
@@ -470,9 +543,7 @@ public class VideoPlayer: Sendable {
             ) { [weak self] item, _ in
                 let duration = CMTimeGetSeconds(item.duration)
                 if !duration.isNaN {
-                    Task { @MainActor in
-                        self?.duration = duration
-                    }
+                    self?.duration = duration
                 }
             }
         }
@@ -482,14 +553,12 @@ public class VideoPlayer: Sendable {
                 \.status,
                  options: [.new, .initial]
             ) { [weak self] item, _ in
-                Task { @MainActor in
-                    self?.loading = item.status == .unknown
-                    if item.status == .failed, let error = item.error {
-                        print("Error: failed to load media: \(error.localizedDescription)")
-                        self?.error = error
-                    } else {
-                        self?.error = nil
-                    }
+                self?.loading = item.status == .unknown
+                if item.status == .failed, let error = item.error {
+                    print("Error: failed to load media: \(error.localizedDescription)")
+                    self?.error = error
+                } else {
+                    self?.error = nil
                 }
             }
         }
@@ -499,13 +568,11 @@ public class VideoPlayer: Sendable {
                 \.timeControlStatus,
                  options: [.new, .old, .initial]
             ) { [weak self] player, status in
-                Task { @MainActor in
-                    self?.buffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
-                    // buffering doesn't bring up the control panel but prevents auto dismiss.
-                    // auto dismiss after play resumed.
-                    if (status.oldValue, status.newValue) == (.waitingToPlayAtSpecifiedRate, .playing) {
-                        self?.restartControlPanelTask()
-                    }
+                self?.buffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+                // buffering doesn't bring up the control panel but prevents auto dismiss.
+                // auto dismiss after play resumed.
+                if (status.oldValue, status.newValue) == (.waitingToPlayAtSpecifiedRate, .playing) {
+                    self?.restartControlPanelTask()
                 }
             }
         }
@@ -538,7 +605,7 @@ public class VideoPlayer: Sendable {
         )
     }
     
-    /// Restarts a task with a 10-second timer to auto-hide the control panel.
+    /// Restart a task with a 10-second timer to auto-hide the control panel.
     public func restartControlPanelTask() {
         cancelControlPanelTask()
         dismissControlPanelTask = Task {
@@ -550,7 +617,7 @@ public class VideoPlayer: Sendable {
         }
     }
     
-    /// Cancels the current task to dismiss the control panel, if any.
+    /// Cancel the current task to dismiss the control panel, if any.
     private func cancelControlPanelTask() {
         dismissControlPanelTask?.cancel()
         dismissControlPanelTask = nil
