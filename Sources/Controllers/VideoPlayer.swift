@@ -223,7 +223,7 @@ public class VideoPlayer: Sendable {
         scrubState = .notScrubbing
         setupObservers()
         if framePacking != .none {
-            setupInjector(playerItem, packing: framePacking, projection: projection)
+            setupInjector(playerItem)
         }
         
         // If the video format is equirectangular, extract the field of view (horizontal & vertical) and aspect ratio
@@ -280,6 +280,13 @@ public class VideoPlayer: Sendable {
         
         // temporarily stop the observers to stop them from interfering in the state changes
         tearDownObservers()
+        
+        // reroute the videoOutput in case we're playing frame-packed media
+        renderer?.flush()
+        if let videoOutput, let currentItem = player.currentItem {
+            currentItem.remove(videoOutput)
+            playerItem.add(videoOutput)
+        }
         
         player.replaceCurrentItem(with: playerItem)
         
@@ -458,9 +465,15 @@ public class VideoPlayer: Sendable {
     }
     
     /// Set up the APMP injector and display link timer for frame packed media.
-    private func setupInjector(_ playerItem: AVPlayerItem, packing: VideoItem.FramePacking, projection: VideoItem.Projection) {
+    /// - Parameters:
+    ///   - playerItem: the player item of the media that needs APMP injection.
+    private func setupInjector(_ playerItem: AVPlayerItem) {
+        guard framePacking != .none else {
+            return
+        }
+        
         do {
-            try injector = try APMPInjector(packing: packing, projection: projection)
+            try injector = try APMPInjector(packing: framePacking, projection: projection)
         } catch {
             print("APMP Injector initialization failed: \(error)")
         }
@@ -497,6 +510,9 @@ public class VideoPlayer: Sendable {
     
     /// Tear down the objects set up in `setupInjector()` and invalidate the display link callbacks.
     private func tearDownInjector() {
+        if let videoOutput, let currentItem = player.currentItem {
+            currentItem.remove(videoOutput)
+        }
         displayLink?.invalidate()
         renderer?.flush()
         
