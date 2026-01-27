@@ -473,9 +473,10 @@ public class VideoPlayer: Sendable {
         }
         
         do {
-            try injector = try APMPInjector(packing: framePacking, projection: projection)
+            try injector = APMPInjector(packing: framePacking, projection: projection)
         } catch {
             print("APMP Injector initialization failed: \(error)")
+            return
         }
         
         videoOutput = {

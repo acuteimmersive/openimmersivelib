@@ -11,6 +11,18 @@ import CoreVideo
 
 /// Injects APMP metadata into frames to render stereo frame-packed media efficiently.
 public class APMPInjector {
+    /// Errors specific to APMP Injector.
+    public enum APMPInjectorError: Error {
+        /// The APMPInjector could not be created with framePacking = .none
+        case InvalidFramePacking
+        /// Base CMFormatDescription could not be extracted from a pixel buffer.
+        case CreateBaseFormatDescriptionError(status: Int)
+        /// APMP CMFormatDescription could not be created.
+        case CreateAPMPFormatDescriptionError(status: Int)
+        /// APMP CMSampleBuffer could not be created.
+        case CreateAPMPSampleBufferError(status: Int)
+    }
+    
     /// The renderer to use for enqueueing. Expose this so callers can
     /// associate it with a display layer or RealityKit component.
     public let renderer = AVSampleBufferVideoRenderer()
@@ -21,13 +33,19 @@ public class APMPInjector {
     /// The CoreMedia Format Description to inject to frames so they're treated as APMP.
     private var cachedFormatDescription: CMFormatDescription?
     /// The dimensions of the last pixel buffer, used to invalidate `cachedFormatDescription`.
-    private var lastSourceDimensions: CMVideoDimensions?
+    private var cachedDimensions: CMVideoDimensions?
     
     /// Public initializer for visibility.
     /// - Parameters:
     ///   - packing: the source media's frame packing type, must be .sideBySide or .overUnder.
     ///   - projection: the source media's projection type.
-    public init(packing: VideoItem.FramePacking, projection: VideoItem.Projection) {
+    public init(
+        packing: VideoItem.FramePacking,
+        projection: VideoItem.Projection
+    ) throws {
+        guard packing != .none else {
+            throw APMPInjectorError.InvalidFramePacking
+        }
         self.packing = packing
         self.projection = projection
     }
@@ -71,27 +89,26 @@ public class APMPInjector {
     /// - Parameters:
     ///   - pixelBuffer: The video pixel buffer of the current video frame.
     /// - Returns: The CoreMedia format description object with APMP tags.
-    private func getAPMPFormatDescription(for pixelBuffer: CVPixelBuffer) throws -> CMFormatDescription {
+    private func getAPMPFormatDescription(
+        for pixelBuffer: CVPixelBuffer
+    ) throws -> CMFormatDescription {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let dimensions = CMVideoDimensions(width: Int32(width), height: Int32(height))
         
-        // Return cached if dimensions unchanged
-        if let cached = cachedFormatDescription,
-           let lastDims = lastSourceDimensions,
-           lastDims.width == dimensions.width,
-           lastDims.height == dimensions.height {
-            return cached
+        if let cachedFormatDescription,
+           let cachedDimensions,
+           cachedDimensions.width == dimensions.width,
+           cachedDimensions.height == dimensions.height {
+            return cachedFormatDescription
         }
         
-        let apmpFormat = try createAPMPFormatDescription(
-            pixelBuffer: pixelBuffer
-        )
+        let formatDescription = try createAPMPFormatDescription(for: pixelBuffer)
         
-        cachedFormatDescription = apmpFormat
-        lastSourceDimensions = dimensions
+        cachedFormatDescription = formatDescription
+        cachedDimensions = dimensions
         
-        return apmpFormat
+        return formatDescription
     }
     
     /// Creates a CoreMedia video format description with APMP tags for the provided pixel buffer.
@@ -99,7 +116,7 @@ public class APMPInjector {
     ///   - pixelBuffer: The video pixel buffer of the current frame.
     /// - Returns: The CoreMedia format description object with APMP tags.
     private func createAPMPFormatDescription(
-        pixelBuffer: CVPixelBuffer
+        for pixelBuffer: CVPixelBuffer
     ) throws -> CMFormatDescription {
         var baseFormatDescription: CMFormatDescription?
         var status = CMVideoFormatDescriptionCreateForImageBuffer(
@@ -109,11 +126,7 @@ public class APMPInjector {
         )
         
         guard status == noErr, let baseFormatDescription else {
-            throw NSError(
-                domain: "APMPInjector",
-                code: Int(status),
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create base format description: \(status)"]
-            )
+            throw APMPInjectorError.CreateBaseFormatDescriptionError(status: Int(status))
         }
         
         // Get existing extensions and add our APMP extensions
@@ -123,7 +136,7 @@ public class APMPInjector {
         }
         
         let packingValue: CFString = switch packing {
-        case .none: "" as CFString
+        case .none: "" as CFString // unreachable
         case .sideBySide: kCMFormatDescriptionViewPackingKind_SideBySide
         case .overUnder: kCMFormatDescriptionViewPackingKind_OverUnder
         }
@@ -159,11 +172,7 @@ public class APMPInjector {
         )
         
         guard status == noErr, let apmpFormatDescription else {
-            throw NSError(
-                domain: "APMPInjector",
-                code: Int(status),
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create APMP format description: \(status)"]
-            )
+            throw APMPInjectorError.CreateAPMPFormatDescriptionError(status: Int(status))
         }
         
         return apmpFormatDescription
@@ -198,11 +207,7 @@ public class APMPInjector {
         )
         
         guard status == noErr, let sampleBuffer else {
-            throw NSError(
-                domain: "APMPInjector",
-                code: Int(status),
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create sample buffer: \(status)"]
-            )
+            throw APMPInjectorError.CreateAPMPSampleBufferError(status: Int(status))
         }
         
         return sampleBuffer
