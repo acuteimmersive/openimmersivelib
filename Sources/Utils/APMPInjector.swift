@@ -153,7 +153,7 @@ public class APMPInjector {
         
         let fieldOfView: CFNumber = switch projection {
         case .equirectangular(let fieldOfView, let _): fieldOfView as CFNumber
-        case .rectangular: 70 as CFNumber
+        case .rectangular: 65 as CFNumber
         case .appleImmersive: 180 as CFNumber
         }
         extensions[kCMFormatDescriptionExtension_HorizontalFieldOfView as String] = fieldOfView as CFNumber
