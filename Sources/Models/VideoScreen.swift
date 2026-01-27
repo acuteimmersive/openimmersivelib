@@ -9,7 +9,6 @@ import RealityKit
 import Observation
 
 /// Manages `Entity` with the sphere/half-sphere or native player onto which the video is projected.
-@MainActor
 public class VideoScreen {
     /// The `Entity` containing the sphere or flat plane onto which the video is projected.
     public let entity: Entity = Entity()
@@ -26,8 +25,8 @@ public class VideoScreen {
     /// Updates the video screen mesh with values from a VideoPlayer instance to resize it and start displaying its video media.
     /// - Parameters:
     ///   - videoPlayer: the VideoPlayer instance
-    ///   - projection: the projection type of the media
-    public func update(source videoPlayer: VideoPlayer, projection: VideoItem.Projection) {
+    public func update(source videoPlayer: VideoPlayer) {
+        let projection = videoPlayer.projection
         switch projection {
         case .equirectangular(fieldOfView: _, force: _):
             // updateSphere() must be called only once to prevent creating multiple VideoMaterial instances
@@ -56,11 +55,12 @@ public class VideoScreen {
             hFov: videoPlayer.horizontalFieldOfView,
             vFov: videoPlayer.verticalFieldOfView
         )
+        
         entity.name = "VideoScreen (Sphere)"
         entity.components[VideoPlayerComponent.self] = nil
         entity.components[ModelComponent.self] = ModelComponent(
             mesh: mesh,
-            materials: [VideoMaterial(avPlayer: videoPlayer.player)]
+            materials: [videoPlayer.material]
         )
         entity.transform = transform
     }
@@ -70,15 +70,35 @@ public class VideoScreen {
     ///   - videoPlayer:the VideoPlayer instance
     ///   - transform: the position of the entity (default identity)
     private func updateNativePlayer(_ videoPlayer: VideoPlayer, transform: Transform = .identity) {
-        let videoPlayerComponent = {
-            var videoPlayerComponent = VideoPlayerComponent(avPlayer: videoPlayer.player)
-            videoPlayerComponent.desiredViewingMode = .stereo
-            videoPlayerComponent.desiredImmersiveViewingMode = .full
-            return videoPlayerComponent
-        }()
         entity.name = "VideoScreen (Native Player)"
         entity.components[ModelComponent.self] = nil
-        entity.components[VideoPlayerComponent.self] = videoPlayerComponent
+        entity.components[VideoPlayerComponent.self] = videoPlayer.component
         entity.transform = transform
+    }
+}
+
+public extension VideoPlayer {
+    /// A RealityKit video material created from the underlying AVPlayer or AVSampleBufferVideoRenderer,
+    /// depending on whether the media has frame packing or not.
+    var material: VideoMaterial {
+        if let renderer {
+            VideoMaterial(videoRenderer: renderer)
+        } else {
+            VideoMaterial(avPlayer: player)
+        }
+    }
+    
+    /// A RealityKit video player component created from the underlying AVPlayer or AVSampleBufferVideoRenderer,
+    /// depending on whether the media has frame packing or not.
+    var component: VideoPlayerComponent {
+        var component: VideoPlayerComponent
+        if let renderer {
+            component = VideoPlayerComponent(videoRenderer: renderer)
+        } else {
+            component = VideoPlayerComponent(avPlayer: player)
+        }
+        component.desiredViewingMode = .stereo
+        component.desiredImmersiveViewingMode = .full
+        return component
     }
 }

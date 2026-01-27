@@ -152,9 +152,7 @@ public struct ImmersivePlayer: View {
             videoPlayer.openItem(selectedItem)
             videoPlayer.showControlPanel()
             videoPlayer.play()
-            
-            let projection = selectedItem.projection ?? .equirectangular(fieldOfView: 180)
-            videoScreen.update(source: videoPlayer, projection: projection)
+            videoScreen.update(source: videoPlayer)
         }
         .onDisappear {
             videoPlayer.stop()
