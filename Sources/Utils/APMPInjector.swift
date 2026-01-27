@@ -156,7 +156,7 @@ public class APMPInjector {
         case .rectangular: 65 as CFNumber
         case .appleImmersive: 180 as CFNumber
         }
-        extensions[kCMFormatDescriptionExtension_HorizontalFieldOfView as String] = fieldOfView as CFNumber
+        extensions[kCMFormatDescriptionExtension_HorizontalFieldOfView as String] = fieldOfView
         
         let dimensions = CMVideoFormatDescriptionGetDimensions(baseFormatDescription)
         let codecType = CMFormatDescriptionGetMediaSubType(baseFormatDescription)

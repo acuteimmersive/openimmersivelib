@@ -6,9 +6,8 @@
 //
 
 import RealityKit
-@preconcurrency import AVFoundation
+import AVFoundation
 
-@MainActor
 public struct VideoTools {
     /// Generates a sphere mesh suitable for mapping an equirectangular video source.
     /// - Parameters:

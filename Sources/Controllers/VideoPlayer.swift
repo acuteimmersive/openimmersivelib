@@ -10,9 +10,6 @@ import AVFoundation
 import RealityKit
 
 /// Video Player Controller interfacing the underlying `AVPlayer`, exposing states and controls to the UI.
-// @MainActor ensures properties are published on the main thread
-// which is critical for using them in SwiftUI Views
-@MainActor
 @Observable
 public class VideoPlayer: Sendable {
     //MARK: Video Player and Video Renderer
@@ -251,7 +248,7 @@ public class VideoPlayer: Sendable {
         selectedBitrateRungIndex = -1
         selectedAudioIndex = -1
         if item.url.host() != nil {
-            playlistReader = PlaylistReader(url: item.url) { @MainActor reader in
+            playlistReader = PlaylistReader(url: item.url) { reader in
                 if case .success = reader.state {
                     if reader.bitrateLadder.count > 0 {
                         self.bitrateLadder = reader.bitrateLadder

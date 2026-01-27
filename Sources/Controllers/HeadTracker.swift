@@ -10,7 +10,6 @@ import RealityKit
 import SwiftUI
 
 /// Provides a convenience interface to obtain head pose transforms and subscribing a closure to handle pose update events.
-@MainActor
 public class HeadTracker {
     public enum State {
         /// Head tracking is stopped.

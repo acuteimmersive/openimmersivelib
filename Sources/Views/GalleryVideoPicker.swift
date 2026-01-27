@@ -1,5 +1,5 @@
 //
-//  SpatialVideoPicker.swift
+//  GalleryVideoPicker.swift
 //  OpenImmersive
 //
 //  Created by Anthony Maës (Acute Immersive) on 10/11/24.
@@ -8,8 +8,8 @@
 import SwiftUI
 import PhotosUI
 
-/// A button revealing a `PhotosPicker` configured to only show spatial videos.
-public struct SpatialVideoPicker: View {
+/// A button revealing a `PhotosPicker` configured to only show videos or spatial videos.
+public struct GalleryVideoPicker: View {
     /// The currently selected item, if any.
     @State private var selectedItem: PhotosPickerItem?
     
@@ -28,7 +28,7 @@ public struct SpatialVideoPicker: View {
     /// - Parameters:
     ///  - spatialVideosOnly: true if the picker should only show spatial videos, false to show all videos.
     ///  - loadItemAction: the callback to execute after a file has been picked.
-    public init(spatialVideosOnly: Bool = true, loadItemAction: @escaping VideoItemAction) {
+    public init(spatialVideosOnly: Bool = false, loadItemAction: @escaping VideoItemAction) {
         self.spatialVideosOnly = spatialVideosOnly
         self.loadItemAction = loadItemAction
     }
@@ -66,7 +66,7 @@ public struct SpatialVideoPicker: View {
 }
 
 #Preview {
-    SpatialVideoPicker() { _ in
+    GalleryVideoPicker() { _ in
         //nothing
     }
 }

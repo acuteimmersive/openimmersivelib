@@ -9,7 +9,6 @@ import RealityKit
 import Observation
 
 /// Manages `Entity` with the sphere/half-sphere or native player onto which the video is projected.
-@MainActor
 public class VideoScreen {
     /// The `Entity` containing the sphere or flat plane onto which the video is projected.
     public let entity: Entity = Entity()
