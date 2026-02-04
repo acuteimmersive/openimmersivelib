@@ -10,7 +10,7 @@ import AVFoundation
 /// Simple structure describing a video.
 public struct VideoItem: Codable {
     nonisolated
-    public enum Projection: Codable {
+    public enum Projection: Codable, Hashable {
         /// Spherical projection of an equirectangular (or half equirectangular) frame. Use this for mono or MV-HEVC stereo VR180 & VR360 video.
         /// - Parameters:
         ///   - fieldOfView: the horizontal field of view of the video, in degrees.
@@ -23,13 +23,19 @@ public struct VideoItem: Codable {
     }
     
     nonisolated
-    public enum FramePacking: Codable {
+    public enum FramePacking: Codable, Hashable {
         /// The video doesn't use frame packing. Use this for mono and MV-HEVC stereo videos (Spatial, AIV, some APMP).
         case none
         /// Left eye and right eye are packed side-by-side in each video frame. Common with legacy stereo VR180.
-        case sideBySide
+        /// - Parameters:
+        ///   - baseline: the distance between the centers of the lenses of the stereo camera system, in millimeters. The default value is 60.0mm (Canon Dual Fisheye Lens).
+        ///   - horizontalDisparity: the relative horizontal shift of the left and right images, which changes the zero parallax plane, in the uniform range [-1.0...1.0]. The default value is 0.
+        case sideBySide(baseline: Float? = nil, horizontalDisparity: Float? = nil)
         /// Left eye and right eye are packed on top of one another in each video frame. Common with legacy stereo VR360.
-        case overUnder
+        /// - Parameters:
+        ///   - baseline: the distance between the centers of the lenses of the stereo camera system, in millimeters. The default value is 60.0mm (Canon Dual Fisheye Lens).
+        ///   - horizontalDisparity: the relative horizontal shift of the left and right images, which changes the zero parallax plane, in the uniform range [-1.0...1.0]. The default value is 0.   
+        case overUnder(baseline: Float? = nil, horizontalDisparity: Float? = nil)
     }
     
     /// Dictionary of metadata values for the video. `commonIdentifierTitle` and `commonIdentifierDescription` are expected.

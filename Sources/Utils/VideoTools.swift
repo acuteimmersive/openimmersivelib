@@ -161,8 +161,7 @@ public struct VideoTools {
             return (naturalSize, nil)
         }
         
-        guard let extensions = CMFormatDescriptionGetExtensions(formatDescription) as Dictionary?,
-              let rawHorizontalFieldOfView = extensions[kCMFormatDescriptionExtension_HorizontalFieldOfView] as? UInt32 else {
+        guard let rawHorizontalFieldOfView = formatDescription.extensions[.horizontalFieldOfView] as? UInt32 else {
             print("Could extract video resolution but not field of view: No extensions found in format description.")
             return (naturalSize, nil)
         }
