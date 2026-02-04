@@ -16,12 +16,6 @@ public class VideoScreen {
     /// Public initializer for visibility.
     public init() {}
     
-    /// The transform to apply to the native VideoPlayerComponent when the projection is a simple rectangle.
-    private static let rectangularScreenTransform = Transform(
-        scale: .init(x: 100, y: 100, z: -100),
-        rotation: .init(),
-        translation: .init(x: 0, y: 0, z: -200))
-    
     /// Updates the video screen mesh with values from a VideoPlayer instance to resize it and start displaying its video media.
     /// - Parameters:
     ///   - videoPlayer: the VideoPlayer instance
@@ -39,7 +33,11 @@ public class VideoScreen {
             }
         
         case .rectangular:
-            self.updateNativePlayer(videoPlayer, transform: Self.rectangularScreenTransform)
+            let rectangularScreenTransform = Transform(
+                scale: .init(x: 1, y: 1, z: -1) * Config.shared.videoScreenRectangleScale,
+                rotation: .init(),
+                translation: .init(x: 0, y: 0, z: -Config.shared.videoScreenRectangleDistance))
+            self.updateNativePlayer(videoPlayer, transform: rectangularScreenTransform)
             
         case .appleImmersive:
             // the Apple Immersive Video entity should always use the identity transform

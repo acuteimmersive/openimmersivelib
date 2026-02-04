@@ -15,12 +15,6 @@ public class APMPInjector {
     public enum APMPInjectorError: Error {
         /// The APMPInjector could not be created with framePacking = .none
         case InvalidFramePacking
-        /// Base CMFormatDescription could not be extracted from a pixel buffer.
-        case CreateBaseFormatDescriptionError(status: Int)
-        /// APMP CMFormatDescription could not be created.
-        case CreateAPMPFormatDescriptionError(status: Int)
-        /// APMP CMSampleBuffer could not be created.
-        case CreateAPMPSampleBufferError(status: Int)
     }
     
     /// The renderer to use for enqueueing. Expose this so callers can
@@ -118,64 +112,43 @@ public class APMPInjector {
     private func createAPMPFormatDescription(
         for pixelBuffer: CVPixelBuffer
     ) throws -> CMFormatDescription {
-        var baseFormatDescription: CMFormatDescription?
-        var status = CMVideoFormatDescriptionCreateForImageBuffer(
-            allocator: kCFAllocatorDefault,
-            imageBuffer: pixelBuffer,
-            formatDescriptionOut: &baseFormatDescription
+        let baseFormat = try CMVideoFormatDescription(imageBuffer: pixelBuffer)
+        var extensions = baseFormat.extensions
+        
+        let (packingKind, baseline, disparity): (CMFormatDescription.Extensions.Value.ViewPackingKind, Float?, Float?)
+        (packingKind, baseline, disparity) = switch packing {
+        case .none: (.sideBySide, nil, nil) // unreachable
+        case .sideBySide(let baseline, let horizontalDisparity): (.sideBySide, baseline, horizontalDisparity)
+        case .overUnder(let baseline, let horizontalDisparity): (.overUnder, baseline, horizontalDisparity)
+        }
+        
+        extensions[.viewPackingKind] = .viewPackingKind(packingKind)
+        if let baseline {
+            // multiply by 1000 to go from mm to µm
+            extensions[.stereoCameraBaseline] = .number(UInt32(baseline * 1000))
+        }
+        if let disparity {
+            // clamp from [-1.0, 1.0] and multiply by 10,000 to go in tenths of thousandth of the uniform range
+            extensions[.horizontalDisparityAdjustment] = .number(Int32(min(max(disparity, -1.0), 1.0) * 10000))
+        }
+        
+        let (projectionKind, fieldOfView): (CMFormatDescription.Extensions.Value.ProjectionKind, Float)
+        (projectionKind, fieldOfView) = switch projection {
+        case .equirectangular(let fieldOfView, let _): (fieldOfView > 180 ? .equirectangular : .halfEquirectangular, fieldOfView)
+        case .rectangular: (.rectilinear, 65.0) // hard-coded typical spatial video field of view
+        case .appleImmersive: (.appleImmersiveVideo, 180.0)
+        }
+        
+        extensions[.projectionKind] = .projectionKind(projectionKind)
+        // multiply by 1000 to go from degrees to thousandth of degrees
+        extensions[.horizontalFieldOfView] = .number(UInt32(fieldOfView * 1000))
+        
+        return try CMVideoFormatDescription(
+            videoCodecType: baseFormat.mediaSubType,
+            width: Int(baseFormat.dimensions.width),
+            height: Int(baseFormat.dimensions.height),
+            extensions: extensions
         )
-        
-        guard status == noErr, let baseFormatDescription else {
-            throw APMPInjectorError.CreateBaseFormatDescriptionError(status: Int(status))
-        }
-        
-        // Get existing extensions and add our APMP extensions
-        var extensions: [String: Any] = [:]
-        if let existingExtensions = CMFormatDescriptionGetExtensions(baseFormatDescription) as? [String: Any] {
-            extensions = existingExtensions
-        }
-        
-        let packingValue: CFString = switch packing {
-        case .none: "" as CFString // unreachable
-        case .sideBySide: kCMFormatDescriptionViewPackingKind_SideBySide
-        case .overUnder: kCMFormatDescriptionViewPackingKind_OverUnder
-        }
-        extensions[kCMFormatDescriptionExtension_ViewPackingKind as String] = packingValue
-        
-        let projectionValue: CFString = switch projection {
-        case .equirectangular(let fieldOfView, let _):
-            if fieldOfView > 180 { kCMFormatDescriptionProjectionKind_Equirectangular }
-            else { kCMFormatDescriptionProjectionKind_HalfEquirectangular }
-        case .rectangular: kCMFormatDescriptionProjectionKind_Rectilinear
-        case .appleImmersive: kCMFormatDescriptionProjectionKind_AppleImmersiveVideo
-        }
-        extensions[kCMFormatDescriptionExtension_ProjectionKind as String] = projectionValue
-        
-        let fieldOfView: CFNumber = switch projection {
-        case .equirectangular(let fieldOfView, let _): fieldOfView as CFNumber
-        case .rectangular: 65 as CFNumber
-        case .appleImmersive: 180 as CFNumber
-        }
-        extensions[kCMFormatDescriptionExtension_HorizontalFieldOfView as String] = fieldOfView
-        
-        let dimensions = CMVideoFormatDescriptionGetDimensions(baseFormatDescription)
-        let codecType = CMFormatDescriptionGetMediaSubType(baseFormatDescription)
-        
-        var apmpFormatDescription: CMFormatDescription?
-        status = CMVideoFormatDescriptionCreate(
-            allocator: kCFAllocatorDefault,
-            codecType: codecType,
-            width: dimensions.width,
-            height: dimensions.height,
-            extensions: extensions as CFDictionary,
-            formatDescriptionOut: &apmpFormatDescription
-        )
-        
-        guard status == noErr, let apmpFormatDescription else {
-            throw APMPInjectorError.CreateAPMPFormatDescriptionError(status: Int(status))
-        }
-        
-        return apmpFormatDescription
     }
     
     /// Creates the CoreMedia sample buffer associating a pixel buffer and a video format description.
@@ -191,25 +164,16 @@ public class APMPInjector {
         time: CMTime,
         duration: CMTime
     ) throws -> CMSampleBuffer {
-        var timing = CMSampleTimingInfo(
+        let timing = CMSampleTimingInfo(
             duration: duration,
             presentationTimeStamp: time,
             decodeTimeStamp: .invalid
         )
         
-        var sampleBuffer: CMSampleBuffer?
-        let status = CMSampleBufferCreateReadyWithImageBuffer(
-            allocator: kCFAllocatorDefault,
+        return try CMSampleBuffer(
             imageBuffer: pixelBuffer,
             formatDescription: formatDescription,
-            sampleTiming: &timing,
-            sampleBufferOut: &sampleBuffer
+            sampleTiming: timing
         )
-        
-        guard status == noErr, let sampleBuffer else {
-            throw APMPInjectorError.CreateAPMPSampleBufferError(status: Int(status))
-        }
-        
-        return sampleBuffer
     }
 }

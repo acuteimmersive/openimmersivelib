@@ -32,8 +32,12 @@ public final class Config: Sendable {
     public let controlPanelShowVolume: Bool
     /// Tint for the scrubber (String): RGB or RGBA color in hexadecimal in the #RRGGBB or #RRGGBBAA format.
     public let controlPanelScrubberTint: Color
-    /// Radius of the video screen's sphere in meters (Number): make sure it's large enough to fit the control panel.
+    /// Radius of the spherical video screen in meters (Number): make sure it's large enough to fit the control panel.
     public let videoScreenSphereRadius: Float
+    /// Height of the rectangular video screen in meters (Number).
+    public let videoScreenRectangleScale: Float
+    /// Distance of the rectangular video screen in meters (Number): make sure it's far enough to fit the control panel.
+    public let videoScreenRectangleDistance: Float
     /// Whether to show or hide the Tap Catcher in red (Boolean).
     public let tapCatcherShowDebug: Bool
     
@@ -73,6 +77,8 @@ public final class Config: Sendable {
             controlPanelScrubberTint = .orange.opacity(0.7)
         }
         videoScreenSphereRadius = config["videoScreenSphereRadius"] as? Float ?? 1000.0
+        videoScreenRectangleScale = config["videoScreenRectangleScale"] as? Float ?? 100.0
+        videoScreenRectangleDistance = config["videoScreenRectangleDistance"] as? Float ?? 200.0
         tapCatcherShowDebug = config["tapCatcherShowDebug"] as? Bool ?? false
     }
     
