@@ -76,3 +76,13 @@ extension VideoItem: Equatable {
         lhs.id == rhs.id
     }
 }
+
+public extension VideoItem.FramePacking {
+    /// Left eye and right eye are packed side-by-side in each video frame. Common with legacy stereo VR180.
+    /// Assumes a disparity of 60mm.
+    static let sideBySide: VideoItem.FramePacking = .sideBySide()
+    
+    /// Left eye and right eye are packed on top of one another in each video frame. Common with legacy stereo VR360.
+    /// Assumes a disparity of 60mm.
+    static let overUnder: VideoItem.FramePacking = .overUnder()
+}
