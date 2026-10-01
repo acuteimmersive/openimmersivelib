@@ -170,10 +170,15 @@ public class APMPInjector {
             decodeTimeStamp: .invalid
         )
         
-        return try CMSampleBuffer(
+        let sampleBuffer = try CMSampleBuffer(
             imageBuffer: pixelBuffer,
             formatDescription: formatDescription,
             sampleTiming: timing
         )
+        // The caller already picks each frame by the AVPlayer clock. The renderer's timebase follows
+        // the host clock (time since boot) and ignores play/pause/seek, so without this, frames whose
+        // item time is ahead of the device's uptime are held in the queue and the picture freezes.
+        sampleBuffer.sampleAttachments[0][.displayImmediately] = true
+        return sampleBuffer
     }
 }
